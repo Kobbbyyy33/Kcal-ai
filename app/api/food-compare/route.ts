@@ -21,6 +21,20 @@ async function fetchOffProduct(barcode: string) {
   return json.product as any;
 }
 
+async function fetchAlternatives(search: string) {
+  const u = new URL("https://world.openfoodfacts.org/cgi/search.pl");
+  u.searchParams.set("search_terms", search);
+  u.searchParams.set("search_simple", "1");
+  u.searchParams.set("action", "process");
+  u.searchParams.set("json", "1");
+  u.searchParams.set("page_size", "8");
+  const res = await fetch(u.toString(), { cache: "no-store" });
+  if (!res.ok) return [];
+  const json = await res.json();
+  const arr = Array.isArray(json?.products) ? json.products : [];
+  return arr.map((p: any) => normalize(p)).slice(0, 8);
+}
+
 function normalize(p: any) {
   const nutr = p?.nutriments ?? {};
   const kcal = toNum(nutr["energy-kcal_100g"]) ?? (toNum(nutr["energy_100g"]) ? (toNum(nutr["energy_100g"]) as number) / 4.184 : null) ?? 0;
@@ -78,13 +92,29 @@ export async function POST(request: Request) {
     if ((winner.fat_100g ?? 0) < (loser.fat_100g ?? 0)) reasons.push("Moins de lipides");
     if (reasons.length === 0) reasons.push("Meilleur compromis global");
 
+    const candidates = await fetchAlternatives(winner.name.split(" ").slice(0, 2).join(" "));
+    const alternatives = candidates
+      .map((x: any) => ({
+        ...x,
+        score: score({
+          kcal_100g: Number(x.kcal_100g ?? 0),
+          protein_100g: Number(x.protein_100g ?? 0),
+          carbs_100g: Number(x.carbs_100g ?? 0),
+          fat_100g: Number(x.fat_100g ?? 0)
+        })
+      }))
+      .filter((x: any) => x.score > Math.max(scoreA, scoreB))
+      .sort((x: any, y: any) => y.score - x.score)
+      .slice(0, 3);
+
     return NextResponse.json({
       productA: { ...a, score: scoreA },
       productB: { ...b, score: scoreB },
       recommendation: {
         better,
         reasons
-      }
+      },
+      alternatives
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Compare failed" }, { status: 500 });

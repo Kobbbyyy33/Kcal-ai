@@ -8,8 +8,10 @@ import {
   BellOff,
   Bot,
   CalendarPlus2,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
+  Download,
   Droplets,
   Flame,
   Lightbulb,
@@ -26,16 +28,41 @@ import { MealEditorModal } from "@/components/MealEditorModal";
 import { Modal } from "@/components/ui/Modal";
 import { NutritionSummary } from "@/components/NutritionSummary";
 import { SmartOnboardingCard } from "@/components/SmartOnboardingCard";
+import { flushOfflineMealQueue, getOfflineQueueSize } from "@/lib/offlineQueue";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { toUserErrorMessage } from "@/lib/supabase/errors";
 import { useStore } from "@/lib/store/useStore";
-import type { CoachInsight, MacroTotals, MealSuggestion, MealType, MealWithItems, Profile } from "@/types";
+import type { CoachInsight, MacroTotals, MealSuggestion, MealType, MealWithItems, Profile, WeeklyPlanResult } from "@/types";
 
 type WeeklyDay = {
   date: string;
   calories: number;
   protein: number;
   score: number;
+};
+
+type WeeklyCoachResult = {
+  adherence_score: number;
+  recommendation: string;
+  adjusted_goals: {
+    daily_calorie_goal: number;
+    daily_protein_goal: number;
+    daily_carbs_goal: number;
+    daily_fat_goal: number;
+  };
+  missions: Array<{ id: string; label: string; progress: number; target: number }>;
+  rare_badges: string[];
+};
+
+type BodyProgressRow = {
+  id: string;
+  date: string;
+  weight_kg: number | null;
+  waist_cm: number | null;
+  chest_cm: number | null;
+  hips_cm: number | null;
+  photo_url: string | null;
+  notes: string | null;
 };
 
 function emptyTotals(): MacroTotals {
@@ -196,6 +223,22 @@ export function DashboardView() {
   const [activeDays7, setActiveDays7] = React.useState(0);
   const [coach, setCoach] = React.useState<CoachInsight | null>(null);
   const [coachLoading, setCoachLoading] = React.useState(false);
+  const [weeklyCoach, setWeeklyCoach] = React.useState<WeeklyCoachResult | null>(null);
+  const [weeklyCoachLoading, setWeeklyCoachLoading] = React.useState(false);
+  const [planLoading, setPlanLoading] = React.useState(false);
+  const [weeklyPlan, setWeeklyPlan] = React.useState<WeeklyPlanResult | null>(null);
+  const [bodyProgress, setBodyProgress] = React.useState<BodyProgressRow[]>([]);
+  const [savingProgress, setSavingProgress] = React.useState(false);
+  const [newProgress, setNewProgress] = React.useState<{
+    weight_kg: string;
+    waist_cm: string;
+    chest_cm: string;
+    hips_cm: string;
+    photo_url: string;
+    notes: string;
+  }>({ weight_kg: "", waist_cm: "", chest_cm: "", hips_cm: "", photo_url: "", notes: "" });
+  const [offlineQueueCount, setOfflineQueueCount] = React.useState(0);
+  const [syncingOffline, setSyncingOffline] = React.useState(false);
   const [hydrationReminders, setHydrationReminders] = React.useState(true);
   const [pushSupported, setPushSupported] = React.useState(false);
   const [pushEnabled, setPushEnabled] = React.useState(false);
@@ -282,6 +325,207 @@ export function DashboardView() {
       toast.error(toUserErrorMessage(err, "Erreur de chargement"));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveMealPayload(payload: {
+    date: string;
+    meal_type: MealType;
+    meal_name: string;
+    items: Array<{
+      name: string;
+      quantity: string;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      barcode?: string;
+      image_url?: string;
+      source: "ai" | "barcode" | "manual";
+    }>;
+    image_url?: string | null;
+  }) {
+    const supabase = supabaseBrowser();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Non connecte");
+    await supabase
+      .from("profiles")
+      .upsert({ id: user.id, email: user.email ?? null })
+      .throwOnError();
+    const mealInsert = await supabase
+      .from("meals")
+      .insert({
+        user_id: user.id,
+        date: payload.date,
+        meal_type: payload.meal_type,
+        meal_name: payload.meal_name
+      })
+      .select("*")
+      .single();
+    if (mealInsert.error) throw mealInsert.error;
+    const itemsPayload = payload.items.map((it) => ({
+      meal_id: mealInsert.data.id,
+      name: it.name,
+      quantity: it.quantity,
+      calories: it.calories,
+      protein: it.protein,
+      carbs: it.carbs,
+      fat: it.fat,
+      barcode: it.barcode ?? null,
+      image_url: it.image_url ?? payload.image_url ?? null,
+      source: it.source
+    }));
+    if (itemsPayload.length > 0) {
+      const { error } = await supabase.from("food_items").insert(itemsPayload);
+      if (error) throw error;
+    }
+  }
+
+  async function syncOfflineMeals() {
+    if (syncingOffline) return;
+    setSyncingOffline(true);
+    try {
+      const synced = await flushOfflineMealQueue(saveMealPayload);
+      setOfflineQueueCount(getOfflineQueueSize());
+      if (synced > 0) {
+        toast.success(`${synced} repas hors-ligne synchronises`);
+        refresh(selectedDate);
+      }
+    } catch {
+      // noop
+    } finally {
+      setSyncingOffline(false);
+    }
+  }
+
+  async function loadWeeklyCoach() {
+    setWeeklyCoachLoading(true);
+    try {
+      const res = await fetch("/api/weekly-coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: selectedDate })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Coach hebdo indisponible");
+      setWeeklyCoach(json as WeeklyCoachResult);
+    } catch (err) {
+      toast.error(toUserErrorMessage(err, "Coach hebdo indisponible"));
+      setWeeklyCoach(null);
+    } finally {
+      setWeeklyCoachLoading(false);
+    }
+  }
+
+  async function applyWeeklyCoachGoals() {
+    if (!weeklyCoach) return;
+    try {
+      const supabase = supabaseBrowser();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non connecte");
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          daily_calorie_goal: weeklyCoach.adjusted_goals.daily_calorie_goal,
+          daily_protein_goal: weeklyCoach.adjusted_goals.daily_protein_goal,
+          daily_carbs_goal: weeklyCoach.adjusted_goals.daily_carbs_goal,
+          daily_fat_goal: weeklyCoach.adjusted_goals.daily_fat_goal
+        })
+        .eq("id", user.id);
+      if (error) throw error;
+      toast.success("Objectifs hebdo appliques");
+      refresh(selectedDate);
+    } catch (err) {
+      toast.error(toUserErrorMessage(err, "Impossible d'appliquer les objectifs"));
+    }
+  }
+
+  async function generateWeeklyPlan() {
+    setPlanLoading(true);
+    try {
+      const res = await fetch("/api/weekly-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ start_date: selectedDate, budget_per_day: profile?.budget_per_day ?? 12 })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Plan indisponible");
+      setWeeklyPlan(json as WeeklyPlanResult);
+      toast.success("Plan 7 jours genere");
+    } catch (err) {
+      toast.error(toUserErrorMessage(err, "Plan indisponible"));
+    } finally {
+      setPlanLoading(false);
+    }
+  }
+
+  async function loadBodyProgress() {
+    try {
+      const supabase = supabaseBrowser();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase
+        .from("body_progress")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("date", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      setBodyProgress((data ?? []) as BodyProgressRow[]);
+    } catch {
+      // noop
+    }
+  }
+
+  async function addBodyProgress() {
+    setSavingProgress(true);
+    try {
+      const supabase = supabaseBrowser();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non connecte");
+      const payload = {
+        user_id: user.id,
+        date: selectedDate,
+        weight_kg: newProgress.weight_kg ? Number(newProgress.weight_kg) : null,
+        waist_cm: newProgress.waist_cm ? Number(newProgress.waist_cm) : null,
+        chest_cm: newProgress.chest_cm ? Number(newProgress.chest_cm) : null,
+        hips_cm: newProgress.hips_cm ? Number(newProgress.hips_cm) : null,
+        photo_url: newProgress.photo_url || null,
+        notes: newProgress.notes || null
+      };
+      const { error } = await supabase.from("body_progress").insert(payload);
+      if (error) throw error;
+      setNewProgress({ weight_kg: "", waist_cm: "", chest_cm: "", hips_cm: "", photo_url: "", notes: "" });
+      await loadBodyProgress();
+      toast.success("Progression corporelle enregistree");
+    } catch (err) {
+      toast.error(toUserErrorMessage(err, "Erreur progression"));
+    } finally {
+      setSavingProgress(false);
+    }
+  }
+
+  async function downloadCoachPdf() {
+    try {
+      const res = await fetch(`/api/coach-report-pdf?to=${encodeURIComponent(selectedDate)}`);
+      if (!res.ok) throw new Error("Export PDF indisponible");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `kcalia-coach-report-${selectedDate}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(toUserErrorMessage(err, "Erreur export PDF"));
     }
   }
 
@@ -542,8 +786,21 @@ export function DashboardView() {
   React.useEffect(() => {
     if (!profile) return;
     loadCoach();
+    loadWeeklyCoach();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, hydration, streakDays, profile?.id]);
+
+  React.useEffect(() => {
+    loadBodyProgress();
+    setOfflineQueueCount(getOfflineQueueSize());
+    const onOnline = () => {
+      setOfflineQueueCount(getOfflineQueueSize());
+      syncOfflineMeals();
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
 
   const totals = profile ? sumMeals(meals) : emptyTotals();
   const maxWeekly = weekly.reduce((m, d) => Math.max(m, d.calories), 0);
@@ -746,6 +1003,123 @@ export function DashboardView() {
           ) : (
             <span className="text-xs text-slate-500">Aucun badge pour le moment. Continue ta routine.</span>
           )}
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-sm font-semibold">Coach hebdo intelligent</div>
+          <Button variant="ghost" className="px-3 text-xs" loading={weeklyCoachLoading} onClick={loadWeeklyCoach}>
+            Recalculer
+          </Button>
+        </div>
+        {weeklyCoach ? (
+          <div className="space-y-2">
+            <div className="text-sm">Adherence: <span className="font-semibold">{weeklyCoach.adherence_score}/100</span></div>
+            <div className="text-xs text-slate-500">{weeklyCoach.recommendation}</div>
+            <div className="text-xs">
+              Objectifs proposes: {weeklyCoach.adjusted_goals.daily_calorie_goal} kcal • P {weeklyCoach.adjusted_goals.daily_protein_goal}
+            </div>
+            <div className="space-y-1">
+              {weeklyCoach.missions.map((m) => (
+                <div key={m.id} className="rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70">
+                  <div>{m.label}</div>
+                  <div className="text-slate-500">{Math.min(m.progress, m.target)} / {m.target}</div>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(weeklyCoach.rare_badges ?? []).map((b) => (
+                <span key={b} className="chip chip-success">{b}</span>
+              ))}
+            </div>
+            <Button className="mt-1" onClick={applyWeeklyCoachGoals}>Appliquer ces objectifs</Button>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-500">Pas de recommandation hebdo pour le moment.</div>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <ClipboardList className="h-4 w-4 text-emerald-600" />
+            Plan repas 7 jours + liste de courses
+          </div>
+          <Button variant="ghost" className="px-3 text-xs" loading={planLoading} onClick={generateWeeklyPlan}>
+            Generer
+          </Button>
+        </div>
+        {weeklyPlan ? (
+          <div className="space-y-3">
+            <div className="text-xs text-slate-500">Budget cible: {weeklyPlan.budget_per_day} EUR / jour</div>
+            <div className="space-y-1">
+              {weeklyPlan.days.slice(0, 3).map((d) => (
+                <div key={d.date} className="rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70">
+                  {d.date}: {Math.round(d.total_kcal)} kcal • {d.estimated_cost} EUR
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="text-xs font-semibold">Courses:</div>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {weeklyPlan.shopping_list.slice(0, 8).map((x) => (
+                  <span key={x.name} className="chip chip-info">{x.name} ({x.quantity})</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-500">Genere ton plan adapte au budget/preferences.</div>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-sm font-semibold">Progression corporelle</div>
+          <Button variant="ghost" className="px-3 text-xs" onClick={loadBodyProgress}>Rafraichir</Button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {(["weight_kg", "waist_cm", "chest_cm", "hips_cm"] as const).map((k) => (
+            <input
+              key={k}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
+              type="number"
+              placeholder={k}
+              value={newProgress[k]}
+              onChange={(e) => setNewProgress((p) => ({ ...p, [k]: e.target.value }))}
+            />
+          ))}
+          <input
+            className="col-span-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900 sm:col-span-5"
+            placeholder="photo url (avant/apres)"
+            value={newProgress.photo_url}
+            onChange={(e) => setNewProgress((p) => ({ ...p, photo_url: e.target.value }))}
+          />
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <Button loading={savingProgress} onClick={addBodyProgress}>Ajouter mesure</Button>
+          <Button variant="ghost" onClick={downloadCoachPdf}>
+            <Download className="h-4 w-4" />
+            Export PDF coach
+          </Button>
+        </div>
+        <div className="mt-2 space-y-1">
+          {bodyProgress.slice(0, 5).map((b) => (
+            <div key={b.id} className="rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70">
+              {b.date} • poids {b.weight_kg ?? "-"} kg • taille {b.waist_cm ?? "-"} cm
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="mb-2 text-sm font-semibold">Mode offline + sync</div>
+        <div className="text-xs text-slate-500">Repas en attente: {offlineQueueCount}</div>
+        <div className="mt-2">
+          <Button variant="ghost" loading={syncingOffline} onClick={syncOfflineMeals}>
+            Synchroniser maintenant
+          </Button>
         </div>
       </Card>
 

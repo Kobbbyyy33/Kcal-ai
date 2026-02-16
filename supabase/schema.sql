@@ -13,8 +13,23 @@ create table if not exists public.profiles (
   daily_protein_goal integer not null default 150,
   daily_carbs_goal integer not null default 250,
   daily_fat_goal integer not null default 65,
-  theme text not null default 'light'
+  theme text not null default 'light',
+  budget_per_day numeric not null default 12,
+  dietary_preferences text[] not null default '{}',
+  allergens text[] not null default '{}',
+  goal_mode text not null default 'maintain'
 );
+
+alter table public.profiles
+  add column if not exists budget_per_day numeric not null default 12,
+  add column if not exists dietary_preferences text[] not null default '{}',
+  add column if not exists allergens text[] not null default '{}',
+  add column if not exists goal_mode text not null default 'maintain';
+
+alter table public.profiles
+  drop constraint if exists profiles_goal_mode_check;
+alter table public.profiles
+  add constraint profiles_goal_mode_check check (goal_mode in ('cut','maintain','bulk'));
 
 create table if not exists public.meals (
   id uuid primary key default uuid_generate_v4(),
@@ -56,11 +71,27 @@ create table if not exists public.push_subscriptions (
 
 create index if not exists push_subscriptions_user_idx on public.push_subscriptions(user_id);
 
+create table if not exists public.body_progress (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  date date not null default current_date,
+  weight_kg numeric,
+  waist_cm numeric,
+  chest_cm numeric,
+  hips_cm numeric,
+  photo_url text,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists body_progress_user_date_idx on public.body_progress(user_id, date);
+
 -- RLS
 alter table public.profiles enable row level security;
 alter table public.meals enable row level security;
 alter table public.food_items enable row level security;
 alter table public.push_subscriptions enable row level security;
+alter table public.body_progress enable row level security;
 
 -- Drop policies first to make this script re-runnable safely
 drop policy if exists "profiles_select_own" on public.profiles;
@@ -80,6 +111,10 @@ drop policy if exists "food_delete_own" on public.food_items;
 drop policy if exists "push_subscriptions_select_own" on public.push_subscriptions;
 drop policy if exists "push_subscriptions_insert_own" on public.push_subscriptions;
 drop policy if exists "push_subscriptions_delete_own" on public.push_subscriptions;
+drop policy if exists "body_progress_select_own" on public.body_progress;
+drop policy if exists "body_progress_insert_own" on public.body_progress;
+drop policy if exists "body_progress_update_own" on public.body_progress;
+drop policy if exists "body_progress_delete_own" on public.body_progress;
 
 drop policy if exists "meal_images_read_public" on storage.objects;
 drop policy if exists "meal_images_insert_own_folder" on storage.objects;
@@ -194,6 +229,27 @@ with check (auth.uid() = user_id);
 
 create policy "push_subscriptions_delete_own"
 on public.push_subscriptions
+for delete
+using (auth.uid() = user_id);
+
+create policy "body_progress_select_own"
+on public.body_progress
+for select
+using (auth.uid() = user_id);
+
+create policy "body_progress_insert_own"
+on public.body_progress
+for insert
+with check (auth.uid() = user_id);
+
+create policy "body_progress_update_own"
+on public.body_progress
+for update
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "body_progress_delete_own"
+on public.body_progress
 for delete
 using (auth.uid() = user_id);
 

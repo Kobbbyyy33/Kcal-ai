@@ -21,6 +21,9 @@ type ProfileRow = {
   daily_protein_goal: number;
   daily_carbs_goal: number;
   daily_fat_goal: number;
+  budget_per_day?: number;
+  dietary_preferences?: string[];
+  allergens?: string[];
 };
 
 const reqSchema = z.object({
@@ -165,7 +168,7 @@ export async function POST(request: Request) {
   const [{ data: profileRes }, { data: mealsRes, error: mealsErr }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("daily_calorie_goal,daily_protein_goal,daily_carbs_goal,daily_fat_goal")
+      .select("daily_calorie_goal,daily_protein_goal,daily_carbs_goal,daily_fat_goal,budget_per_day,dietary_preferences,allergens")
       .eq("id", user.id)
       .single(),
     supabase.from("meals").select("meal_name,meal_type,food_items(name,calories,protein,carbs,fat)").eq("date", date)
@@ -189,6 +192,9 @@ export async function POST(request: Request) {
       "Contraintes: 3 actions max, 3 suggestions repas max, style clair, court, motivant, en francais.",
       `Contexte du jour: calories ${Math.round(totals.calories)}, proteines ${Math.round(totals.protein)}, glucides ${Math.round(totals.carbs)}, lipides ${Math.round(totals.fat)}.`,
       `Objectifs: calories ${profile?.daily_calorie_goal ?? 2000}, proteines ${profile?.daily_protein_goal ?? 150}, glucides ${profile?.daily_carbs_goal ?? 250}, lipides ${profile?.daily_fat_goal ?? 65}.`,
+      `Budget/jour: ${profile?.budget_per_day ?? 12} EUR.`,
+      `Preferences: ${Array.isArray(profile?.dietary_preferences) ? profile?.dietary_preferences.join(", ") : "aucune"}.`,
+      `Allergenes a eviter: ${Array.isArray(profile?.allergens) ? profile?.allergens.join(", ") : "aucun"}.`,
       `Hydratation: ${hydration}/12. Streak: ${streakDays} jours.`
     ].join("\n");
 

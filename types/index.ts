@@ -16,6 +16,10 @@ export type Profile = {
   daily_carbs_goal: number;
   daily_fat_goal: number;
   theme: "light" | "dark";
+  budget_per_day: number;
+  dietary_preferences: string[];
+  allergens: string[];
+  goal_mode: "cut" | "maintain" | "bulk";
 };
 
 export type Meal = {
@@ -58,4 +62,26 @@ export type CoachInsight = {
   motivation: string;
   suggested_meals: MealSuggestion[];
   source: "ai" | "heuristic";
+};
+
+export type WeeklyPlanDay = {
+  date: string;
+  meals: Array<{
+    meal_type: MealType;
+    name: string;
+    quantity: string;
+    kcal: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    estimated_cost: number;
+  }>;
+  total_kcal: number;
+  estimated_cost: number;
+};
+
+export type WeeklyPlanResult = {
+  budget_per_day: number;
+  days: WeeklyPlanDay[];
+  shopping_list: Array<{ name: string; quantity: string; estimated_cost: number }>;
 };

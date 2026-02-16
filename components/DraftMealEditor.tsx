@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { enqueueOfflineMeal } from "@/lib/offlineQueue";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { useStore } from "@/lib/store/useStore";
 import type { MealType } from "@/types";
@@ -75,6 +76,54 @@ export function DraftMealEditor({
 
   const sum = totals(items);
 
+  async function saveMeal(payload: {
+    date: string;
+    meal_type: MealType;
+    meal_name: string;
+    items: DraftItem[];
+    image_url?: string | null;
+  }) {
+    const supabase = supabaseBrowser();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Non connecte");
+
+    await supabase.from("profiles").upsert({ id: user.id, email: user.email ?? null }).throwOnError();
+
+    const mealInsert = await supabase
+      .from("meals")
+      .insert({
+        user_id: user.id,
+        date: payload.date,
+        meal_type: payload.meal_type,
+        meal_name: payload.meal_name
+      })
+      .select("*")
+      .single();
+
+    if (mealInsert.error) throw mealInsert.error;
+
+    const mealId = mealInsert.data.id as string;
+    const foodPayload = payload.items.map((it) => ({
+      meal_id: mealId,
+      name: it.name,
+      quantity: it.quantity,
+      calories: it.calories,
+      protein: it.protein,
+      carbs: it.carbs,
+      fat: it.fat,
+      barcode: it.barcode ?? null,
+      image_url: it.image_url ?? payload.image_url ?? null,
+      source: it.source
+    }));
+
+    if (foodPayload.length > 0) {
+      const { error } = await supabase.from("food_items").insert(foodPayload);
+      if (error) throw error;
+    }
+  }
+
   if (!draft) return null;
 
   return (
@@ -83,9 +132,9 @@ export function DraftMealEditor({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(
             [
-              ["breakfast", "Petit-déj"],
-              ["lunch", "Déjeuner"],
-              ["dinner", "Dîner"],
+              ["breakfast", "Petit dej"],
+              ["lunch", "Dejeuner"],
+              ["dinner", "Diner"],
               ["snack", "Snack"]
             ] as Array<[MealType, string]>
           ).map(([t, label]) => (
@@ -116,8 +165,7 @@ export function DraftMealEditor({
         </label>
 
         <div className="mt-4 text-sm text-gray-600 dark:text-slate-400">
-          Total: {Math.round(sum.calories)} kcal • P {Math.round(sum.protein)} • G{" "}
-          {Math.round(sum.carbs)} • L {Math.round(sum.fat)}
+          Total: {Math.round(sum.calories)} kcal • P {Math.round(sum.protein)} • G {Math.round(sum.carbs)} • L {Math.round(sum.fat)}
           {draft.confidence ? ` • Confiance: ${draft.confidence}` : ""}
         </div>
       </Card>
@@ -131,22 +179,16 @@ export function DraftMealEditor({
                 <input
                   className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
                   value={it.name}
-                  onChange={(e) =>
-                    setItems((prev) => prev.map((p, i) => (i === idx ? { ...p, name: e.target.value } : p)))
-                  }
+                  onChange={(e) => setItems((prev) => prev.map((p, i) => (i === idx ? { ...p, name: e.target.value } : p)))}
                   required
                 />
               </label>
               <label className="block">
-                <span className="text-xs font-medium text-gray-600 dark:text-slate-400">Quantité</span>
+                <span className="text-xs font-medium text-gray-600 dark:text-slate-400">Quantite</span>
                 <input
                   className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
                   value={it.quantity}
-                  onChange={(e) =>
-                    setItems((prev) =>
-                      prev.map((p, i) => (i === idx ? { ...p, quantity: e.target.value } : p))
-                    )
-                  }
+                  onChange={(e) => setItems((prev) => prev.map((p, i) => (i === idx ? { ...p, quantity: e.target.value } : p)))}
                   placeholder="150g"
                 />
               </label>
@@ -156,13 +198,7 @@ export function DraftMealEditor({
               {(["calories", "protein", "carbs", "fat"] as const).map((k) => (
                 <label key={k} className="block">
                   <span className="text-xs font-medium text-gray-600 dark:text-slate-400">
-                    {k === "calories"
-                      ? "kcal"
-                      : k === "protein"
-                        ? "Prot"
-                        : k === "carbs"
-                          ? "Gluc"
-                          : "Lip"}
+                    {k === "calories" ? "kcal" : k === "protein" ? "Prot" : k === "carbs" ? "Gluc" : "Lip"}
                   </span>
                   <input
                     className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
@@ -172,9 +208,7 @@ export function DraftMealEditor({
                     step="0.1"
                     value={it[k]}
                     onChange={(e) =>
-                      setItems((prev) =>
-                        prev.map((p, i) => (i === idx ? { ...p, [k]: Number(e.target.value) } : p))
-                      )
+                      setItems((prev) => prev.map((p, i) => (i === idx ? { ...p, [k]: Number(e.target.value) } : p)))
                     }
                     required={k === "calories"}
                   />
@@ -191,49 +225,23 @@ export function DraftMealEditor({
         onClick={async () => {
           setSaving(true);
           try {
-            const supabase = supabaseBrowser();
-            const {
-              data: { user }
-            } = await supabase.auth.getUser();
-            if (!user) throw new Error("Non connecté");
-            await supabase
-              .from("profiles")
-              .upsert({ id: user.id, email: user.email ?? null })
-              .throwOnError();
+            const payload = {
+              date: selectedDate,
+              meal_type: mealType,
+              meal_name: mealName,
+              items,
+              image_url: imageUrl
+            };
 
-            const mealInsert = await supabase
-              .from("meals")
-              .insert({
-                user_id: user.id,
-                date: selectedDate,
-                meal_type: mealType,
-                meal_name: mealName
-              })
-              .select("*")
-              .single();
-
-            if (mealInsert.error) throw mealInsert.error;
-
-            const mealId = mealInsert.data.id as string;
-            const payload = items.map((it) => ({
-              meal_id: mealId,
-              name: it.name,
-              quantity: it.quantity,
-              calories: it.calories,
-              protein: it.protein,
-              carbs: it.carbs,
-              fat: it.fat,
-              barcode: it.barcode ?? null,
-              image_url: it.image_url ?? imageUrl ?? null,
-              source: it.source
-            }));
-
-            if (payload.length > 0) {
-              const { error } = await supabase.from("food_items").insert(payload);
-              if (error) throw error;
+            if (typeof navigator !== "undefined" && !navigator.onLine) {
+              enqueueOfflineMeal(payload);
+              toast.success("Repas enregistre hors-ligne. Synchronisation auto a la reconnexion.");
+              onSaved?.();
+              return;
             }
 
-            toast.success("Repas sauvegardé");
+            await saveMeal(payload);
+            toast.success("Repas sauvegarde");
             onSaved?.();
           } catch (err) {
             toast.error(err instanceof Error ? err.message : "Erreur de sauvegarde");

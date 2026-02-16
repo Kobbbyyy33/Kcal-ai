@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import * as React from "react";
-import { Bell, Camera, Eraser, Smartphone, WandSparkles } from "lucide-react";
+import { Bell, Camera, Download, Eraser, ShieldCheck, Smartphone, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +17,28 @@ type GoalForm = {
   daily_carbs_goal: number;
   daily_fat_goal: number;
 };
+
+type GoalPreset = "cut" | "maintain" | "bulk";
+
+function computePreset(baseCalories: number, preset: GoalPreset): GoalForm {
+  const safeBase = Math.max(1200, baseCalories || 2000);
+  const calories =
+    preset === "cut" ? Math.max(1200, safeBase - 300) : preset === "bulk" ? Math.min(4200, safeBase + 250) : safeBase;
+
+  const ratio =
+    preset === "cut"
+      ? { p: 0.35, c: 0.35, f: 0.3 }
+      : preset === "bulk"
+        ? { p: 0.3, c: 0.45, f: 0.25 }
+        : { p: 0.3, c: 0.4, f: 0.3 };
+
+  return {
+    daily_calorie_goal: Math.round(calories),
+    daily_protein_goal: Math.round((calories * ratio.p) / 4),
+    daily_carbs_goal: Math.round((calories * ratio.c) / 4),
+    daily_fat_goal: Math.round((calories * ratio.f) / 9)
+  };
+}
 
 function SettingSwitch({
   checked,
@@ -61,6 +83,7 @@ export function SettingsView() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [savingPrefs, setSavingPrefs] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
   const [email, setEmail] = React.useState<string>("");
 
   const [goals, setGoals] = React.useState<GoalForm>({
@@ -69,6 +92,10 @@ export function SettingsView() {
     daily_carbs_goal: 250,
     daily_fat_goal: 65
   });
+  const [budgetPerDay, setBudgetPerDay] = React.useState<number>(12);
+  const [goalMode, setGoalMode] = React.useState<GoalPreset>("maintain");
+  const [dietaryPrefs, setDietaryPrefs] = React.useState<string>("");
+  const [allergens, setAllergens] = React.useState<string>("");
 
   const [prefs, setPrefs] = React.useState<AppPreferences>(() => loadPreferences());
 
@@ -80,7 +107,9 @@ export function SettingsView() {
         data: { user }
       } = await supabase.auth.getUser();
       if (!user) return;
+
       setEmail(user.email ?? "");
+
       await supabase.from("profiles").upsert({ id: user.id, email: user.email ?? null }).throwOnError();
       const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
       const profile = data as Profile | null;
@@ -91,7 +120,12 @@ export function SettingsView() {
           daily_carbs_goal: profile.daily_carbs_goal,
           daily_fat_goal: profile.daily_fat_goal
         });
+        setBudgetPerDay(Number((profile as any).budget_per_day ?? 12));
+        setGoalMode(((profile as any).goal_mode ?? "maintain") as GoalPreset);
+        setDietaryPrefs((((profile as any).dietary_preferences ?? []) as string[]).join(", "));
+        setAllergens((((profile as any).allergens ?? []) as string[]).join(", "));
       }
+
       setPrefs(loadPreferences());
     } catch (err) {
       toast.error(toUserErrorMessage(err, "Erreur de chargement"));
@@ -103,6 +137,24 @@ export function SettingsView() {
   React.useEffect(() => {
     load();
   }, []);
+
+  async function exportMyData() {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/export/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferences: prefs })
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error ?? "Export impossible");
+      toast.success("Export envoye par mail (format Excel-compatible)");
+    } catch (err) {
+      toast.error(toUserErrorMessage(err, "Erreur export"));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -126,6 +178,40 @@ export function SettingsView() {
           <WandSparkles className="h-4 w-4 text-[#7da03c]" />
           Objectifs journaliers
         </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="chip chip-info"
+            onClick={() => {
+              setGoalMode("cut");
+              setGoals(computePreset(goals.daily_calorie_goal, "cut"));
+            }}
+          >
+            Mode seche
+          </button>
+          <button
+            type="button"
+            className="chip chip-info"
+            onClick={() => {
+              setGoalMode("maintain");
+              setGoals(computePreset(goals.daily_calorie_goal, "maintain"));
+            }}
+          >
+            Mode maintien
+          </button>
+          <button
+            type="button"
+            className="chip chip-info"
+            onClick={() => {
+              setGoalMode("bulk");
+              setGoals(computePreset(goals.daily_calorie_goal, "bulk"));
+            }}
+          >
+            Mode prise de masse
+          </button>
+        </div>
+
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(
             [
@@ -153,6 +239,38 @@ export function SettingsView() {
           ))}
         </div>
 
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600 dark:text-slate-400">Budget / jour (EUR)</span>
+            <input
+              className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
+              type="number"
+              min={1}
+              step="0.5"
+              value={budgetPerDay}
+              onChange={(e) => setBudgetPerDay(Number(e.target.value) || 12)}
+            />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-gray-600 dark:text-slate-400">Preferences alimentaires</span>
+            <input
+              className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
+              value={dietaryPrefs}
+              onChange={(e) => setDietaryPrefs(e.target.value)}
+              placeholder="vegan, halal, sans lactose"
+            />
+          </label>
+        </div>
+        <label className="mt-2 block">
+          <span className="text-xs font-medium text-gray-600 dark:text-slate-400">Allergenes a exclure</span>
+          <input
+            className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
+            value={allergens}
+            onChange={(e) => setAllergens(e.target.value)}
+            placeholder="lactose, eggs, fish, soy, sesame"
+          />
+        </label>
+
         <div className="mt-4 flex justify-end">
           <Button
             loading={saving || loading}
@@ -164,15 +282,27 @@ export function SettingsView() {
                   data: { user }
                 } = await supabase.auth.getUser();
                 if (!user) throw new Error("Non connecte");
+
                 const { error } = await supabase
                   .from("profiles")
                   .update({
                     daily_calorie_goal: goals.daily_calorie_goal,
                     daily_protein_goal: goals.daily_protein_goal,
                     daily_carbs_goal: goals.daily_carbs_goal,
-                    daily_fat_goal: goals.daily_fat_goal
+                    daily_fat_goal: goals.daily_fat_goal,
+                    goal_mode: goalMode,
+                    budget_per_day: budgetPerDay,
+                    dietary_preferences: dietaryPrefs
+                      .split(",")
+                      .map((x) => x.trim())
+                      .filter(Boolean),
+                    allergens: allergens
+                      .split(",")
+                      .map((x) => x.trim())
+                      .filter(Boolean)
                   })
                   .eq("id", user.id);
+
                 if (error) throw error;
                 toast.success("Objectifs enregistres");
               } catch (err) {
@@ -216,7 +346,7 @@ export function SettingsView() {
               Mobile
             </div>
             <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Active "Demarrage auto" seulement si tu es en HTTPS (Vercel) pour eviter les blocages iPhone.
+              Active "Demarrage auto" seulement en HTTPS (Vercel), sinon iPhone bloque la camera.
             </div>
           </div>
         </div>
@@ -226,7 +356,7 @@ export function SettingsView() {
             checked={prefs.scanner_auto_start}
             onChange={(next) => setPrefs((prev) => ({ ...prev, scanner_auto_start: next }))}
             label="Demarrage auto du scanner"
-            description="Ouvre la camera automatiquement quand tu arrives sur l'ecran scan."
+            description="Lance la camera automatiquement sur l'ecran scan."
           />
           <SettingSwitch
             checked={prefs.scanner_vibrate_on_detect}
@@ -238,12 +368,13 @@ export function SettingsView() {
             checked={prefs.scan_sound_enabled}
             onChange={(next) => setPrefs((prev) => ({ ...prev, scan_sound_enabled: next }))}
             label="Son de confirmation"
-            description="Joue un petit bip quand le scan reussit."
+            description="Joue un bip quand le scan reussit."
           />
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Button
+            className="w-full"
             loading={savingPrefs}
             onClick={async () => {
               setSavingPrefs(true);
@@ -259,6 +390,7 @@ export function SettingsView() {
           </Button>
           <Button
             variant="ghost"
+            className="w-full"
             onClick={() => {
               clearFoodScanCache();
               toast.success("Cache local nettoye");
@@ -272,11 +404,27 @@ export function SettingsView() {
 
       <Card className="p-4">
         <div className="flex items-center gap-2 text-sm font-semibold">
+          <ShieldCheck className="h-4 w-4 text-[#21502c]" />
+          Donnees et securite
+        </div>
+        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Envoi par mail des donnees en fichiers CSV (ouvrables dans Excel): profil, preferences, repas, aliments.
+        </div>
+        <div className="mt-3">
+          <Button variant="ghost" className="w-full" loading={exporting} onClick={exportMyData}>
+            <Download className="h-4 w-4" />
+            Envoyer mes donnees par mail
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold">
           <Bell className="h-4 w-4 text-[#21502c]" />
           Notifications
         </div>
         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Les notifications push se configurent depuis le Dashboard (bouton activation/desactivation).
+          Les notifications push se configurent depuis le Dashboard (activation/desactivation).
         </div>
       </Card>
     </div>

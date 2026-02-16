@@ -47,6 +47,14 @@ type CompareResponse = {
     better: "A" | "B";
     reasons: string[];
   };
+  alternatives?: Array<{
+    name: string;
+    kcal_100g: number;
+    protein_100g: number;
+    carbs_100g: number;
+    fat_100g: number;
+    score: number;
+  }>;
 };
 
 const RECENT_KEY = "kcal-ai:recent-scans:v1";
@@ -275,6 +283,16 @@ export function ScanView() {
             <div className="font-semibold">
               Reco: choisir {compare.recommendation.better === "A" ? "A" : "B"} ({compare.recommendation.reasons.join(", ")})
             </div>
+            {compare.alternatives && compare.alternatives.length > 0 ? (
+              <div className="rounded-xl bg-white/80 p-2 text-xs dark:bg-slate-900/70">
+                <div className="mb-1 font-semibold">Alternatives plus saines:</div>
+                {compare.alternatives.map((a) => (
+                  <div key={a.name}>
+                    {a.name} ({a.score}/100)
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </Card>

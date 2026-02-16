@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { supabaseRouteClient } from "@/lib/supabase/routeClient";
 
 const schema = z.object({
   q: z.string().min(1).max(120),
@@ -23,6 +24,21 @@ export async function GET(request: Request) {
   }
 
   const { q: query, tag } = parsed.data;
+  const supabase = await supabaseRouteClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  let userPrefs: string[] = [];
+  let userAllergens: string[] = [];
+  if (user) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("dietary_preferences,allergens")
+      .eq("id", user.id)
+      .single();
+    userPrefs = (((prof as any)?.dietary_preferences ?? []) as string[]).map((x) => x.toLowerCase());
+    userAllergens = (((prof as any)?.allergens ?? []) as string[]).map((x) => x.toLowerCase());
+  }
   const offUrl = new URL("https://world.openfoodfacts.org/cgi/search.pl");
   offUrl.searchParams.set("search_terms", query);
   offUrl.searchParams.set("search_simple", "1");
@@ -84,7 +100,17 @@ export async function GET(request: Request) {
     })
     .filter((x: { name: string }) => x.name && x.name !== "Produit");
 
-  const filtered = tag ? items.filter((x: { tags: string[] }) => x.tags.includes(tag)) : items;
+  const filtered = (tag ? items.filter((x: { tags: string[] }) => x.tags.includes(tag)) : items).filter((x: any) => {
+    const name = String(x.name ?? "").toLowerCase();
+    if (userPrefs.includes("vegan") && /(poulet|boeuf|porc|saumon|thon|oeuf|fromage|lait|yaourt)/i.test(name)) return false;
+    if (userPrefs.includes("sans lactose") && /(lait|fromage|yaourt|skyr|whey)/i.test(name)) return false;
+    if (userPrefs.includes("sans gluten") && /(ble|pain|pates|semoule|avoine)/i.test(name)) return false;
+    if (userAllergens.includes("lactose") && /(lait|fromage|yaourt|skyr|whey)/i.test(name)) return false;
+    if (userAllergens.includes("eggs") && /oeuf/i.test(name)) return false;
+    if (userAllergens.includes("fish") && /(saumon|thon|poisson)/i.test(name)) return false;
+    if (userAllergens.includes("soy") && /tofu|soja/i.test(name)) return false;
+    return true;
+  });
 
   return NextResponse.json({ items: filtered });
 }

@@ -32,6 +32,19 @@
           "type": "image/png"
         }
       ]
+    },
+    {
+      "name": "Scan direct",
+      "short_name": "Scan",
+      "description": "Scanner un code-barres rapidement",
+      "url": "/scan",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ],
   "icons": [
