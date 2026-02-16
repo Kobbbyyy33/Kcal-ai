@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
+import { Heart, History, ScanLine, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -10,10 +11,22 @@ import { DraftMealEditor, type DraftMeal } from "@/components/DraftMealEditor";
 import type { MealType } from "@/types";
 
 type OffProduct = {
+  code?: string;
   product_name?: string;
   image_url?: string;
+  brands?: string;
+  nutriscore_grade?: string;
   nutriments?: Record<string, number | string | undefined>;
 };
+
+type StoredProduct = {
+  barcode: string;
+  name: string;
+  image_url: string | null;
+};
+
+const RECENT_KEY = "kcal-ai:recent-scans:v1";
+const FAVORITE_KEY = "kcal-ai:favorite-scans:v1";
 
 function toNum(v: unknown): number | null {
   const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
@@ -33,12 +46,47 @@ function macrosPer100g(product: OffProduct) {
   return { kcal, protein, carbs, fat };
 }
 
+function readStored(key: string): StoredProduct[] {
+  try {
+    const raw = window.localStorage.getItem(key);
+    const parsed = raw ? (JSON.parse(raw) as StoredProduct[]) : [];
+    return Array.isArray(parsed) ? parsed.slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStored(key: string, list: StoredProduct[]) {
+  window.localStorage.setItem(key, JSON.stringify(list.slice(0, 12)));
+}
+
 export function ScanView() {
   const [barcode, setBarcode] = React.useState<string>("");
   const [product, setProduct] = React.useState<OffProduct | null>(null);
   const [grams, setGrams] = React.useState(100);
   const [loadingProduct, setLoadingProduct] = React.useState(false);
   const [draft, setDraft] = React.useState<DraftMeal | null>(null);
+  const [recentScans, setRecentScans] = React.useState<StoredProduct[]>([]);
+  const [favorites, setFavorites] = React.useState<StoredProduct[]>([]);
+
+  const isFavorite = React.useMemo(
+    () => (barcode ? favorites.some((x) => x.barcode === barcode) : false),
+    [favorites, barcode]
+  );
+
+  function rememberScan(item: StoredProduct) {
+    const nextRecent = [item, ...recentScans.filter((x) => x.barcode !== item.barcode)].slice(0, 8);
+    setRecentScans(nextRecent);
+    saveStored(RECENT_KEY, nextRecent);
+  }
+
+  function toggleFavorite(item: StoredProduct) {
+    const exists = favorites.some((x) => x.barcode === item.barcode);
+    const next = exists ? favorites.filter((x) => x.barcode !== item.barcode) : [item, ...favorites].slice(0, 12);
+    setFavorites(next);
+    saveStored(FAVORITE_KEY, next);
+    toast.success(exists ? "Retire des favoris" : "Ajoute aux favoris");
+  }
 
   async function fetchProduct(code: string) {
     const trimmed = code.trim();
@@ -47,16 +95,20 @@ export function ScanView() {
     setProduct(null);
     setDraft(null);
     try {
-      const res = await fetch(
-        `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(trimmed)}.json`
-      );
+      const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(trimmed)}.json`);
       const json = await res.json();
       if (!json || json.status !== 1 || !json.product) {
         throw new Error("Produit non trouve. Utilise la saisie manuelle.");
       }
       setBarcode(trimmed);
-      setProduct(json.product as OffProduct);
+      const p = json.product as OffProduct;
+      setProduct(p);
       setGrams(100);
+      rememberScan({
+        barcode: trimmed,
+        name: p.product_name ?? `Produit ${trimmed}`,
+        image_url: p.image_url ?? null
+      });
     } catch (err) {
       setBarcode(trimmed);
       setProduct(null);
@@ -65,6 +117,11 @@ export function ScanView() {
       setLoadingProduct(false);
     }
   }
+
+  React.useEffect(() => {
+    setRecentScans(readStored(RECENT_KEY));
+    setFavorites(readStored(FAVORITE_KEY));
+  }, []);
 
   React.useEffect(() => {
     if (!product) return;
@@ -88,6 +145,8 @@ export function ScanView() {
     });
   }, [product, barcode, grams]);
 
+  const per100 = product ? macrosPer100g(product) : null;
+
   return (
     <div className="space-y-4">
       <Card className="overflow-hidden p-0">
@@ -106,9 +165,7 @@ export function ScanView() {
 
       <Card className="p-4">
         <div className="text-sm font-semibold">Scanner</div>
-        <div className="mt-1 text-sm text-gray-600 dark:text-slate-400">
-          Detecte automatiquement un code-barres ou saisis un code manuellement.
-        </div>
+        <div className="mt-1 text-sm text-gray-600 dark:text-slate-400">Detecte automatiquement un code-barres ou saisis un code manuellement.</div>
         <div className="mt-3">
           <BarcodeScanner
             onDetected={(code) => {
@@ -130,9 +187,90 @@ export function ScanView() {
         </div>
       </Card>
 
+      {(favorites.length > 0 || recentScans.length > 0) && (
+        <Card className="p-4">
+          {favorites.length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <Heart className="h-4 w-4 text-rose-500" />
+                Favoris
+              </div>
+              <div className="mb-3 flex flex-wrap gap-2">
+                {favorites.slice(0, 6).map((x) => (
+                  <button
+                    key={`fav-${x.barcode}`}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
+                    onClick={() => {
+                      setBarcode(x.barcode);
+                      fetchProduct(x.barcode);
+                    }}
+                  >
+                    {x.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {recentScans.length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <History className="h-4 w-4 text-slate-500" />
+                Recents
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {recentScans.slice(0, 8).map((x) => (
+                  <button
+                    key={`rec-${x.barcode}`}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
+                    onClick={() => {
+                      setBarcode(x.barcode);
+                      fetchProduct(x.barcode);
+                    }}
+                  >
+                    {x.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
       {product ? (
         <Card className="p-4">
-          <div className="text-sm font-semibold">{product.product_name ?? "Produit"}</div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <img
+                src={product.image_url ?? "/icons/scan-food.svg"}
+                alt={product.product_name ?? "Produit"}
+                className="h-16 w-16 rounded-2xl object-cover"
+              />
+              <div>
+                <div className="text-sm font-semibold">{product.product_name ?? "Produit"}</div>
+                <div className="mt-1 text-xs text-slate-500">{product.brands ?? "Open Food Facts"}</div>
+                {product.nutriscore_grade ? (
+                  <div className="mt-1 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                    Nutri-score {String(product.nutriscore_grade).toUpperCase()}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                toggleFavorite({
+                  barcode,
+                  name: product.product_name ?? `Produit ${barcode}`,
+                  image_url: product.image_url ?? null
+                })
+              }
+              className="rounded-full bg-slate-100 p-2 dark:bg-slate-800"
+              aria-label="toggle favorite"
+            >
+              <Star className={`h-4 w-4 ${isFavorite ? "fill-amber-400 text-amber-500" : "text-slate-500"}`} />
+            </button>
+          </div>
+
           <div className="mt-3 flex items-center gap-3">
             <input
               className="w-full"
@@ -152,9 +290,47 @@ export function ScanView() {
             />
             <span className="text-sm text-gray-600 dark:text-slate-400">g</span>
           </div>
-          <div className="mt-3 text-xs text-gray-600 dark:text-slate-400">
-            Les nutriments manquants dans Open Food Facts sont consideres a 0.
+          <div className="mt-2 flex gap-2">
+            {[50, 100, 150, 200].map((g) => (
+              <button
+                key={g}
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs dark:border-slate-700"
+                onClick={() => setGrams(g)}
+              >
+                {g}g
+              </button>
+            ))}
           </div>
+
+          {per100 && (
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="text-slate-500">kcal</div>
+                <div className="font-semibold">{Math.round(per100.kcal * (grams / 100))}</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="flex items-center gap-1 text-slate-500">
+                  <img src="/icons/protein.svg" alt="prot" className="h-4 w-4" /> Prot
+                </div>
+                <div className="font-semibold">{Math.round(per100.protein * (grams / 100))}g</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="flex items-center gap-1 text-slate-500">
+                  <img src="/icons/carbs.svg" alt="carbs" className="h-4 w-4" /> Gluc
+                </div>
+                <div className="font-semibold">{Math.round(per100.carbs * (grams / 100))}g</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="flex items-center gap-1 text-slate-500">
+                  <img src="/icons/fat.svg" alt="fat" className="h-4 w-4" /> Lip
+                </div>
+                <div className="font-semibold">{Math.round(per100.fat * (grams / 100))}g</div>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-3 text-xs text-gray-600 dark:text-slate-400">Les nutriments manquants Open Food Facts sont estimes a 0.</div>
         </Card>
       ) : null}
 

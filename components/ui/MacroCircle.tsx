@@ -4,11 +4,15 @@ export function MacroCircle({
   label,
   value,
   goal,
+  icon,
+  color = "#10b981",
   className
 }: {
   label: string;
   value: number;
   goal: number;
+  icon?: string;
+  color?: string;
   className?: string;
 }) {
   const radius = 28;
@@ -18,19 +22,29 @@ export function MacroCircle({
 
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <svg width="72" height="72" viewBox="0 0 72 72" className="shrink-0">
+      <div className="relative shrink-0">
+        <svg width="72" height="72" viewBox="0 0 72 72">
         <circle cx="36" cy="36" r={radius} strokeWidth="8" className="fill-none stroke-gray-200 dark:stroke-slate-800" />
         <circle
           cx="36"
           cy="36"
           r={radius}
           strokeWidth="8"
-          className="fill-none stroke-primary"
+          className="fill-none"
+          stroke={color}
           strokeDasharray={`${dash} ${circumference - dash}`}
           strokeLinecap="round"
           transform="rotate(-90 36 36)"
         />
-      </svg>
+        </svg>
+        {icon ? (
+          <img
+            src={icon}
+            alt={label}
+            className="pointer-events-none absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2"
+          />
+        ) : null}
+      </div>
       <div>
         <div className="text-sm font-medium">{label}</div>
         <div className="text-sm text-gray-600 dark:text-slate-400">
@@ -40,4 +54,3 @@ export function MacroCircle({
     </div>
   );
 }
-
