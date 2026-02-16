@@ -75,7 +75,9 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
   - Appel OpenAI Vision cote serveur
   - Parsing JSON robuste + normalisation des numeriques
 - `app/api/search-food/route.ts`
-  - Proxy recherche Open Food Facts
+  - Proxy recherche Open Food Facts + tags intelligents (`high_protein`, `low_kcal`, `post_workout`)
+- `app/api/food-compare/route.ts`
+  - Comparateur A/B par code-barres avec recommendation automatique
 - `app/api/coach/route.ts`
   - Coach IA du jour + suggestions repas (fallback heuristique si OpenAI indisponible)
 - `app/api/push/subscribe/route.ts`

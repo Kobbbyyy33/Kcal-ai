@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import * as React from "react";
-import { Heart, History, ScanLine, Star } from "lucide-react";
+import { Heart, History, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -23,6 +23,29 @@ type StoredProduct = {
   barcode: string;
   name: string;
   image_url: string | null;
+};
+
+type CompareResponse = {
+  productA: {
+    name: string;
+    kcal_100g: number;
+    protein_100g: number;
+    carbs_100g: number;
+    fat_100g: number;
+    score: number;
+  };
+  productB: {
+    name: string;
+    kcal_100g: number;
+    protein_100g: number;
+    carbs_100g: number;
+    fat_100g: number;
+    score: number;
+  };
+  recommendation: {
+    better: "A" | "B";
+    reasons: string[];
+  };
 };
 
 const RECENT_KEY = "kcal-ai:recent-scans:v1";
@@ -68,6 +91,10 @@ export function ScanView() {
   const [draft, setDraft] = React.useState<DraftMeal | null>(null);
   const [recentScans, setRecentScans] = React.useState<StoredProduct[]>([]);
   const [favorites, setFavorites] = React.useState<StoredProduct[]>([]);
+  const [compareA, setCompareA] = React.useState("");
+  const [compareB, setCompareB] = React.useState("");
+  const [compareLoading, setCompareLoading] = React.useState(false);
+  const [compare, setCompare] = React.useState<CompareResponse | null>(null);
 
   const isFavorite = React.useMemo(
     () => (barcode ? favorites.some((x) => x.barcode === barcode) : false),
@@ -115,6 +142,26 @@ export function ScanView() {
       toast.error(err instanceof Error ? err.message : "Erreur Open Food Facts");
     } finally {
       setLoadingProduct(false);
+    }
+  }
+
+  async function compareProducts() {
+    if (!compareA.trim() || !compareB.trim()) return;
+    setCompareLoading(true);
+    setCompare(null);
+    try {
+      const res = await fetch("/api/food-compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ barcodeA: compareA.trim(), barcodeB: compareB.trim() })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Comparaison impossible");
+      setCompare(json as CompareResponse);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur comparaison");
+    } finally {
+      setCompareLoading(false);
     }
   }
 
@@ -185,6 +232,46 @@ export function ScanView() {
             Chercher
           </Button>
         </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="text-sm font-semibold">Comparateur produits A/B</div>
+        <div className="mt-1 text-xs text-slate-500">Compare deux codes-barres et reco automatique.</div>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <input
+            className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
+            placeholder="Code A"
+            value={compareA}
+            onChange={(e) => setCompareA(e.target.value)}
+          />
+          <input
+            className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
+            placeholder="Code B"
+            value={compareB}
+            onChange={(e) => setCompareB(e.target.value)}
+          />
+        </div>
+        <div className="mt-2 flex gap-2">
+          <Button loading={compareLoading} onClick={compareProducts}>
+            Comparer
+          </Button>
+          {barcode ? (
+            <Button variant="ghost" onClick={() => setCompareA(barcode)}>
+              Utiliser code scanne en A
+            </Button>
+          ) : null}
+        </div>
+        {compare ? (
+          <div className="mt-3 space-y-2 rounded-2xl bg-slate-50 p-3 text-sm dark:bg-slate-800/70">
+            <div>
+              A: {compare.productA.name} ({compare.productA.score}/100) | B: {compare.productB.name} (
+              {compare.productB.score}/100)
+            </div>
+            <div className="font-semibold">
+              Reco: choisir {compare.recommendation.better === "A" ? "A" : "B"} ({compare.recommendation.reasons.join(", ")})
+            </div>
+          </div>
+        ) : null}
       </Card>
 
       {(favorites.length > 0 || recentScans.length > 0) && (

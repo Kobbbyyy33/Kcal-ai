@@ -91,9 +91,9 @@ export function BarcodeScanner({
         <button
           type="button"
           className={[
-            "min-h-[44px] rounded-xl border px-4 py-2 text-sm font-medium",
+            "min-h-[44px] rounded-xl border px-4 py-2 text-sm font-medium transition-colors",
             active
-              ? "border-red-300 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+              ? "state-error"
               : "border-gray-200 bg-white text-gray-800 hover:bg-gray-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
           ].join(" ")}
           onClick={() => setActive((v) => !v)}
@@ -102,7 +102,7 @@ export function BarcodeScanner({
         </button>
       </div>
 
-      {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
+      {error ? <div className="state-error mt-3 rounded-xl px-3 py-2 text-sm">{error}</div> : null}
       {active ? <div className="mt-4" id={containerId} /> : null}
     </Card>
   );

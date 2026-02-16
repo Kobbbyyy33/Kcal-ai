@@ -12,33 +12,73 @@ export function GET() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#0f172a"
+          background: "#f2f5ea"
         }}
       >
         <div
           style={{
-            width: 420,
-            height: 420,
-            borderRadius: 9999,
-            background: "#10b981",
+            width: 472,
+            height: 472,
+            borderRadius: 80,
+            background: "#7da03c",
+            boxShadow: "0 30px 80px rgba(33,80,44,0.24)",
+            position: "relative",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center"
+            justifyContent: "center",
+            overflow: "hidden"
           }}
         >
           <div
             style={{
-              width: 190,
-              height: 95,
-              borderLeft: "42px solid white",
-              borderBottom: "42px solid white",
-              transform: "rotate(-45deg) translateY(-12px)"
+              position: "absolute",
+              top: 40,
+              left: 64,
+              width: 108,
+              height: 48,
+              borderRadius: 99,
+              transform: "rotate(-24deg)",
+              background: "#21502c"
             }}
           />
+          <div
+            style={{
+              position: "absolute",
+              top: 40,
+              right: 58,
+              width: 108,
+              height: 48,
+              borderRadius: 99,
+              transform: "rotate(24deg)",
+              background: "#21502c"
+            }}
+          />
+          <div
+            style={{
+              width: 324,
+              height: 324,
+              borderRadius: 9999,
+              background: "radial-gradient(circle at 28% 24%, #f9b61a 0%, #e55f15 55%, #f52e18 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+          >
+            <div
+              style={{
+                color: "#ffffff",
+                fontSize: 174,
+                fontWeight: 900,
+                fontFamily: "Arial, sans-serif",
+                lineHeight: 1
+              }}
+            >
+              K
+            </div>
+          </div>
         </div>
       </div>
     ),
     { width: 512, height: 512 }
   );
 }
-

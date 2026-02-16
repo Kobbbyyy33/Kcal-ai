@@ -34,6 +34,8 @@ import type { CoachInsight, MacroTotals, MealSuggestion, MealType, MealWithItems
 type WeeklyDay = {
   date: string;
   calories: number;
+  protein: number;
+  score: number;
 };
 
 function emptyTotals(): MacroTotals {
@@ -65,6 +67,7 @@ function hydrationKey(date: string) {
 
 const HYDRATION_REMINDER_KEY = "hydration-reminders-enabled";
 const LAST_REMINDER_KEY = "hydration-last-reminder-at";
+const QUICK_WATER_PREFIX = "quick-water-applied:";
 
 function buildTip(profile: Profile | null, totals: MacroTotals, hydration: number) {
   if (!profile) return "On charge ton profil nutrition...";
@@ -153,6 +156,17 @@ function getSmartSuggestions(profile: Profile | null, totals: MacroTotals): Meal
     .map((x) => x.meal);
 }
 
+function dayConsistencyScore(
+  calories: number,
+  protein: number,
+  goals: { daily_calorie_goal: number; daily_protein_goal: number }
+) {
+  const calDeltaRatio = goals.daily_calorie_goal > 0 ? Math.abs(calories - goals.daily_calorie_goal) / goals.daily_calorie_goal : 1;
+  const proteinRatio = goals.daily_protein_goal > 0 ? Math.min(protein / goals.daily_protein_goal, 1) : 0;
+  const score = 100 - calDeltaRatio * 55 + proteinRatio * 45;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 const MEAL_TYPES: Array<{ type: MealType; label: string }> = [
   { type: "breakfast", label: "Petit dej" },
   { type: "lunch", label: "Dejeuner" },
@@ -220,7 +234,7 @@ export function DashboardView() {
       const [{ data: weeklyRows, error: weeklyErr }, { data: streakRows, error: streakErr }] = await Promise.all([
         supabase
           .from("meals")
-          .select("date, food_items(calories)")
+          .select("date, food_items(calories,protein)")
           .gte("date", from)
           .lte("date", date)
           .order("date", { ascending: true }),
@@ -230,22 +244,40 @@ export function DashboardView() {
       if (weeklyErr) throw weeklyErr;
       if (streakErr) throw streakErr;
 
-      const grouped = new Map<string, number>();
+      const grouped = new Map<string, { calories: number; protein: number }>();
       for (let i = 0; i < 7; i++) {
         const d = format(addDays(parseISO(from), i), "yyyy-MM-dd");
-        grouped.set(d, 0);
+        grouped.set(d, { calories: 0, protein: 0 });
       }
 
-      for (const row of (weeklyRows ?? []) as Array<{ date: string; food_items: Array<{ calories: number }> }>) {
-        const prev = grouped.get(row.date) ?? 0;
-        const added = (row.food_items ?? []).reduce((acc, item) => acc + (Number(item.calories) || 0), 0);
-        grouped.set(row.date, prev + added);
+      for (const row of (weeklyRows ?? []) as Array<{ date: string; food_items: Array<{ calories: number; protein: number }> }>) {
+        const prev = grouped.get(row.date) ?? { calories: 0, protein: 0 };
+        const added = (row.food_items ?? []).reduce(
+          (acc, item) => {
+            acc.calories += Number(item.calories) || 0;
+            acc.protein += Number(item.protein) || 0;
+            return acc;
+          },
+          { calories: 0, protein: 0 }
+        );
+        grouped.set(row.date, { calories: prev.calories + added.calories, protein: prev.protein + added.protein });
       }
 
-      setWeekly(Array.from(grouped.entries()).map(([d, calories]) => ({ date: d, calories })));
+      const goals = {
+        daily_calorie_goal: (profRes as Profile | null)?.daily_calorie_goal ?? 2000,
+        daily_protein_goal: (profRes as Profile | null)?.daily_protein_goal ?? 150
+      };
+      setWeekly(
+        Array.from(grouped.entries()).map(([d, val]) => ({
+          date: d,
+          calories: val.calories,
+          protein: val.protein,
+          score: dayConsistencyScore(val.calories, val.protein, goals)
+        }))
+      );
       const activeDates = new Set(((streakRows ?? []) as Array<{ date: string }>).map((r) => r.date));
       setStreakDays(computeStreak(date, activeDates));
-      setActiveDays7(Array.from(grouped.values()).filter((x) => x > 0).length);
+      setActiveDays7(Array.from(grouped.values()).filter((x) => x.calories > 0).length);
     } catch (err) {
       toast.error(toUserErrorMessage(err, "Erreur de chargement"));
     } finally {
@@ -425,6 +457,16 @@ export function DashboardView() {
   }, [selectedDate]);
 
   React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("quick") !== "water") return;
+    const key = `${QUICK_WATER_PREFIX}${selectedDate}`;
+    if (window.localStorage.getItem(key) === "done") return;
+    setHydration((v) => Math.min(12, v + 1));
+    window.localStorage.setItem(key, "done");
+    toast.success("Hydratation +1");
+  }, [selectedDate]);
+
+  React.useEffect(() => {
     window.localStorage.setItem(hydrationKey(selectedDate), String(hydration));
   }, [selectedDate, hydration]);
 
@@ -514,6 +556,15 @@ export function DashboardView() {
 
   const remainingCalories = profile ? Math.max(Math.round(profile.daily_calorie_goal - totals.calories), 0) : 0;
   const smartSuggestions = React.useMemo(() => getSmartSuggestions(profile, totals), [profile, totals]);
+  const currentDayScore = weekly.find((d) => d.date === selectedDate)?.score ?? 0;
+  const rankSorted = [...weekly].sort((a, b) => b.score - a.score);
+  const weeklyRank = Math.max(1, rankSorted.findIndex((d) => d.date === selectedDate) + 1);
+  const badges = [
+    streakDays >= 5 ? "5 jours d'affilee" : null,
+    profile && totals.protein >= profile.daily_protein_goal ? "Objectif proteines atteint" : null,
+    hydration >= 8 ? "Hydratation solide" : null,
+    activeDays7 >= 6 ? "Semaine tres active" : null
+  ].filter(Boolean) as string[];
 
   return (
     <div className="space-y-4">
@@ -572,6 +623,20 @@ export function DashboardView() {
           >
             <ChevronRight className="h-5 w-5" />
           </Button>
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="mb-2 text-sm font-semibold">Quick Add</div>
+        <div className="flex items-center gap-2">
+          <Button className="px-4" onClick={() => setHydration((v) => Math.min(12, v + 1))}>
+            Eau +1
+          </Button>
+          <Link href="/add-meal?quick=manual">
+            <Button variant="ghost" className="px-4">
+              Repas express
+            </Button>
+          </Link>
         </div>
       </Card>
 
@@ -658,6 +723,29 @@ export function DashboardView() {
         <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
           <Trophy className="h-3.5 w-3.5" />
           {activeDays7}/7 jours actifs cette semaine
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-sm font-semibold">Classement hebdo</div>
+          <div className="text-xs text-slate-500">
+            Rang #{weeklyRank}/{Math.max(weekly.length, 1)}
+          </div>
+        </div>
+        <div className="text-sm">
+          Score du jour: <span className="font-semibold">{currentDayScore}/100</span>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {badges.length > 0 ? (
+            badges.map((b) => (
+              <span key={b} className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
+                {b}
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-slate-500">Aucun badge pour le moment. Continue ta routine.</span>
+          )}
         </div>
       </Card>
 

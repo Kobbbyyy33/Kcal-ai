@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#10b981"
+  themeColor: "#7da03c"
 };
 
 const manrope = Manrope({
@@ -28,7 +28,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="fr" suppressHydrationWarning>
       <body className={`${manrope.variable} ${sora.variable}`}>
         {children}
-        <Toaster richColors position="top-center" />
+        <Toaster
+          richColors
+          position="top-center"
+          toastOptions={{
+            classNames: {
+              toast: "!rounded-2xl !border !border-[#dbe0d6] !bg-white !text-slate-900 dark:!border-slate-700 dark:!bg-slate-900 dark:!text-slate-100",
+              success: "!border-[#c9dfaa] !bg-[#eaf4dd] !text-[#21502c]",
+              error: "!border-[#f9c3ba] !bg-[#fde6e2] !text-[#f52e18]"
+            }
+          }}
+        />
       </body>
     </html>
   );

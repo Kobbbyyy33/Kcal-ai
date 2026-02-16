@@ -4,19 +4,35 @@
 
 :root {
   color-scheme: light;
-  --bg-page: #f1f5f9;
+  --bg-page: #f6f7f2;
   --text-main: #0f172a;
+  --brand-green: #7da03c;
+  --brand-orange: #e55f15;
+  --brand-deep: #21502c;
+  --brand-red: #f52e18;
+  --brand-yellow: #f9b61a;
+  --status-success-bg: #eaf4dd;
+  --status-success-text: #21502c;
+  --status-error-bg: #fde6e2;
+  --status-error-text: #f52e18;
+  --status-warning-bg: #fff4dd;
+  --status-warning-text: #a45b00;
+  --status-info-bg: #e9f0e5;
+  --status-info-text: #2f5f2b;
 }
 
 html.dark {
   color-scheme: dark;
-  --bg-page: #020617;
+  --bg-page: #0b1a12;
   --text-main: #e2e8f0;
 }
 
 body {
   @apply text-gray-900 dark:text-slate-50;
-  background: var(--bg-page);
+  background:
+    radial-gradient(1200px 420px at 0% -10%, #f9b61a25 0%, transparent 55%),
+    radial-gradient(900px 360px at 100% -5%, #e55f1520 0%, transparent 50%),
+    var(--bg-page);
   color: var(--text-main);
   font-family: var(--font-manrope), sans-serif;
 }
@@ -31,4 +47,106 @@ h4 {
 
 * {
   -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: #7da03c33;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes tab-pop {
+  from {
+    transform: scale(0.98);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@layer components {
+  .card-reveal {
+    animation: fade-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: transform, opacity;
+  }
+
+  .tab-pill {
+    border-radius: 9999px;
+    border: 1px solid #dbe0d6;
+    background: #ffffff;
+    color: #334155;
+    transition: all 180ms ease;
+  }
+
+  .tab-pill:hover {
+    border-color: #b7c8a0;
+    transform: translateY(-1px);
+  }
+
+  .tab-pill-active {
+    border-color: var(--brand-green);
+    background: linear-gradient(135deg, #f0f8e8 0%, #fff4dd 100%);
+    color: var(--brand-deep);
+    animation: tab-pop 160ms ease-out both;
+  }
+
+  .chip {
+    border-radius: 9999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 600;
+  }
+
+  .chip-success {
+    background: var(--status-success-bg);
+    color: var(--status-success-text);
+  }
+
+  .chip-error {
+    background: var(--status-error-bg);
+    color: var(--status-error-text);
+  }
+
+  .chip-warning {
+    background: var(--status-warning-bg);
+    color: var(--status-warning-text);
+  }
+
+  .chip-info {
+    background: var(--status-info-bg);
+    color: var(--status-info-text);
+  }
+
+  .state-success {
+    border: 1px solid #c9dfaa;
+    background: var(--status-success-bg);
+    color: var(--status-success-text);
+  }
+
+  .state-error {
+    border: 1px solid #f9c3ba;
+    background: var(--status-error-bg);
+    color: var(--status-error-text);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-reveal,
+  .tab-pill-active {
+    animation: none !important;
+  }
+
+  .tab-pill {
+    transition: none !important;
+  }
 }

@@ -28,7 +28,7 @@ export function BottomNav() {
               className={cn(
                 "flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs",
                 active
-                  ? "bg-emerald-500 text-white shadow-sm"
+                  ? "bg-gradient-to-r from-[#7da03c] to-[#e55f15] text-white shadow-sm"
                   : "text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
               )}
             >

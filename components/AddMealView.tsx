@@ -67,8 +67,9 @@ function saveStored(key: string, list: StoredProduct[]) {
 export function AddMealView() {
   const searchParams = useSearchParams();
   const initialMealType = (searchParams.get("meal_type") as MealType | null) ?? "lunch";
+  const quick = searchParams.get("quick");
 
-  const [method, setMethod] = React.useState<Method>("photo");
+  const [method, setMethod] = React.useState<Method>(quick === "manual" ? "manual" : "photo");
   const [draft, setDraft] = React.useState<DraftMeal | null>(null);
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
 
@@ -176,10 +177,10 @@ export function AddMealView() {
                 setBarcode("");
               }}
               className={[
-                "min-h-[44px] rounded-full border px-4 py-3 text-sm font-semibold transition-colors",
+                "tab-pill min-h-[44px] px-4 py-3 text-sm font-semibold",
                 method === k
-                  ? "border-primary bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
-                  : "border-gray-200 bg-white text-gray-800 hover:bg-gray-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                  ? "tab-pill-active"
+                  : "dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               ].join(" ")}
             >
               {label}
@@ -243,7 +244,7 @@ export function AddMealView() {
                       {favorites.slice(0, 5).map((x) => (
                         <button
                           key={`f-${x.barcode}`}
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs dark:border-slate-700"
+                          className="chip chip-info"
                           onClick={() => {
                             setBarcode(x.barcode);
                             loadByBarcode(x.barcode);
@@ -263,7 +264,7 @@ export function AddMealView() {
                       {recentScans.slice(0, 6).map((x) => (
                         <button
                           key={`r-${x.barcode}`}
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs dark:border-slate-700"
+                          className="chip chip-info"
                           onClick={() => {
                             setBarcode(x.barcode);
                             loadByBarcode(x.barcode);
@@ -294,7 +295,7 @@ export function AddMealView() {
                   </div>
                   <button
                     type="button"
-                    className="rounded-full bg-slate-100 p-2 dark:bg-slate-800"
+                    className="rounded-full bg-slate-100 p-2 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700"
                     onClick={() => {
                       const item = {
                         barcode,
@@ -336,7 +337,7 @@ export function AddMealView() {
                     <button
                       key={g}
                       type="button"
-                      className="rounded-full border border-slate-200 px-3 py-1 text-xs dark:border-slate-700"
+                      className="chip chip-info"
                       onClick={() => setGrams(g)}
                     >
                       {g}g

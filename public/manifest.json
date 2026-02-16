@@ -4,8 +4,36 @@
   "description": "PWA de tracking calories avec photo IA, scan code-barres et journal de repas.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#10b981",
+  "background_color": "#f6f7f2",
+  "theme_color": "#7da03c",
+  "shortcuts": [
+    {
+      "name": "Ajouter de l'eau",
+      "short_name": "Eau +1",
+      "description": "Ajout rapide d'un verre d'eau",
+      "url": "/dashboard?quick=water",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Ajouter un repas",
+      "short_name": "Repas",
+      "description": "Saisie rapide d'un repas",
+      "url": "/add-meal?quick=manual",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",

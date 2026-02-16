@@ -7,11 +7,17 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: "#10b981"
+          DEFAULT: "#7da03c"
+        },
+        brand: {
+          green: "#7da03c",
+          orange: "#e55f15",
+          deep: "#21502c",
+          red: "#f52e18",
+          yellow: "#f9b61a"
         }
       }
     }
   },
   plugins: []
 } satisfies Config;
-
