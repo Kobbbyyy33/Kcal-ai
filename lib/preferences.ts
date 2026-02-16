@@ -1,0 +1,56 @@
+export type AppPreferences = {
+  default_portion_grams: number;
+  scanner_auto_start: boolean;
+  scanner_vibrate_on_detect: boolean;
+  scan_sound_enabled: boolean;
+};
+
+const STORAGE_KEY = "kcal-ai:preferences:v1";
+
+export const defaultPreferences: AppPreferences = {
+  default_portion_grams: 100,
+  scanner_auto_start: false,
+  scanner_vibrate_on_detect: true,
+  scan_sound_enabled: false
+};
+
+export function clampPortion(value: number) {
+  if (!Number.isFinite(value)) return defaultPreferences.default_portion_grams;
+  return Math.min(600, Math.max(1, Math.round(value)));
+}
+
+export function loadPreferences(): AppPreferences {
+  if (typeof window === "undefined") return defaultPreferences;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultPreferences;
+    const parsed = JSON.parse(raw) as Partial<AppPreferences>;
+    return {
+      default_portion_grams: clampPortion(parsed.default_portion_grams ?? defaultPreferences.default_portion_grams),
+      scanner_auto_start: Boolean(parsed.scanner_auto_start),
+      scanner_vibrate_on_detect:
+        parsed.scanner_vibrate_on_detect === undefined ? defaultPreferences.scanner_vibrate_on_detect : Boolean(parsed.scanner_vibrate_on_detect),
+      scan_sound_enabled: Boolean(parsed.scan_sound_enabled)
+    };
+  } catch {
+    return defaultPreferences;
+  }
+}
+
+export function savePreferences(next: AppPreferences) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      ...next,
+      default_portion_grams: clampPortion(next.default_portion_grams)
+    })
+  );
+}
+
+export function clearFoodScanCache() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem("kcal-ai:recent-scans:v1");
+  window.localStorage.removeItem("kcal-ai:favorite-scans:v1");
+}
+

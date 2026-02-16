@@ -1,10 +1,12 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
+import { Bell, Camera, Eraser, Smartphone, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { clearFoodScanCache, clampPortion, loadPreferences, savePreferences, type AppPreferences } from "@/lib/preferences";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { toUserErrorMessage } from "@/lib/supabase/errors";
 import type { Profile } from "@/types";
@@ -16,16 +18,59 @@ type GoalForm = {
   daily_fat_goal: number;
 };
 
+function SettingSwitch({
+  checked,
+  onChange,
+  label,
+  description
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  description: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+      <div>
+        <div className="text-sm font-medium">{label}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">{description}</div>
+      </div>
+      <button
+        type="button"
+        aria-pressed={checked}
+        onClick={() => onChange(!checked)}
+        className={[
+          "relative h-7 w-12 rounded-full border transition-colors",
+          checked
+            ? "border-[#7da03c] bg-[#7da03c]"
+            : "border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700"
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+            checked ? "translate-x-6" : "translate-x-1"
+          ].join(" ")}
+        />
+      </button>
+    </div>
+  );
+}
+
 export function SettingsView() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [savingPrefs, setSavingPrefs] = React.useState(false);
   const [email, setEmail] = React.useState<string>("");
+
   const [goals, setGoals] = React.useState<GoalForm>({
     daily_calorie_goal: 2000,
     daily_protein_goal: 150,
     daily_carbs_goal: 250,
     daily_fat_goal: 65
   });
+
+  const [prefs, setPrefs] = React.useState<AppPreferences>(() => loadPreferences());
 
   async function load() {
     setLoading(true);
@@ -47,6 +92,7 @@ export function SettingsView() {
           daily_fat_goal: profile.daily_fat_goal
         });
       }
+      setPrefs(loadPreferences());
     } catch (err) {
       toast.error(toUserErrorMessage(err, "Erreur de chargement"));
     } finally {
@@ -76,7 +122,10 @@ export function SettingsView() {
       </Card>
 
       <Card className="p-4">
-        <div className="text-sm font-semibold">Objectifs journaliers</div>
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <WandSparkles className="h-4 w-4 text-[#7da03c]" />
+          Objectifs journaliers
+        </div>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(
             [
@@ -135,6 +184,99 @@ export function SettingsView() {
           >
             Sauvegarder
           </Button>
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Camera className="h-4 w-4 text-[#e55f15]" />
+          Scanner et saisie rapide
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600 dark:text-slate-400">Portion par defaut (g)</span>
+            <input
+              className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
+              type="number"
+              min={1}
+              max={600}
+              value={prefs.default_portion_grams}
+              onChange={(e) =>
+                setPrefs((prev) => ({
+                  ...prev,
+                  default_portion_grams: clampPortion(Number(e.target.value) || 100)
+                }))
+              }
+            />
+          </label>
+          <div className="rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <Smartphone className="h-4 w-4" />
+              Mobile
+            </div>
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Active "Demarrage auto" seulement si tu es en HTTPS (Vercel) pour eviter les blocages iPhone.
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <SettingSwitch
+            checked={prefs.scanner_auto_start}
+            onChange={(next) => setPrefs((prev) => ({ ...prev, scanner_auto_start: next }))}
+            label="Demarrage auto du scanner"
+            description="Ouvre la camera automatiquement quand tu arrives sur l'ecran scan."
+          />
+          <SettingSwitch
+            checked={prefs.scanner_vibrate_on_detect}
+            onChange={(next) => setPrefs((prev) => ({ ...prev, scanner_vibrate_on_detect: next }))}
+            label="Vibration a la detection"
+            description="Retour haptique quand un code-barres est detecte."
+          />
+          <SettingSwitch
+            checked={prefs.scan_sound_enabled}
+            onChange={(next) => setPrefs((prev) => ({ ...prev, scan_sound_enabled: next }))}
+            label="Son de confirmation"
+            description="Joue un petit bip quand le scan reussit."
+          />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            loading={savingPrefs}
+            onClick={async () => {
+              setSavingPrefs(true);
+              try {
+                savePreferences(prefs);
+                toast.success("Preferences enregistrees");
+              } finally {
+                setSavingPrefs(false);
+              }
+            }}
+          >
+            Enregistrer les preferences
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              clearFoodScanCache();
+              toast.success("Cache local nettoye");
+            }}
+          >
+            <Eraser className="h-4 w-4" />
+            Vider favoris/scans
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Bell className="h-4 w-4 text-[#21502c]" />
+          Notifications
+        </div>
+        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Les notifications push se configurent depuis le Dashboard (bouton activation/desactivation).
         </div>
       </Card>
     </div>

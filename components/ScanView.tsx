@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { ManualEntry } from "@/components/ManualEntry";
 import { DraftMealEditor, type DraftMeal } from "@/components/DraftMealEditor";
+import { loadPreferences } from "@/lib/preferences";
 import type { MealType } from "@/types";
 
 type OffProduct = {
@@ -86,6 +87,7 @@ function saveStored(key: string, list: StoredProduct[]) {
 export function ScanView() {
   const [barcode, setBarcode] = React.useState<string>("");
   const [product, setProduct] = React.useState<OffProduct | null>(null);
+  const [defaultPortion, setDefaultPortion] = React.useState(100);
   const [grams, setGrams] = React.useState(100);
   const [loadingProduct, setLoadingProduct] = React.useState(false);
   const [draft, setDraft] = React.useState<DraftMeal | null>(null);
@@ -130,7 +132,7 @@ export function ScanView() {
       setBarcode(trimmed);
       const p = json.product as OffProduct;
       setProduct(p);
-      setGrams(100);
+      setGrams(defaultPortion);
       rememberScan({
         barcode: trimmed,
         name: p.product_name ?? `Produit ${trimmed}`,
@@ -166,6 +168,9 @@ export function ScanView() {
   }
 
   React.useEffect(() => {
+    const prefs = loadPreferences();
+    setDefaultPortion(prefs.default_portion_grams);
+    setGrams(prefs.default_portion_grams);
     setRecentScans(readStored(RECENT_KEY));
     setFavorites(readStored(FAVORITE_KEY));
   }, []);

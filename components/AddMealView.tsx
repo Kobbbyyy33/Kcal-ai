@@ -10,6 +10,7 @@ import { PhotoUploader } from "@/components/PhotoUploader";
 import { DraftMealEditor, type DraftMeal } from "@/components/DraftMealEditor";
 import { ManualEntry } from "@/components/ManualEntry";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
+import { loadPreferences } from "@/lib/preferences";
 import type { MealType } from "@/types";
 
 type Method = "photo" | "barcode" | "manual";
@@ -75,6 +76,7 @@ export function AddMealView() {
 
   const [barcode, setBarcode] = React.useState("");
   const [product, setProduct] = React.useState<OffProduct | null>(null);
+  const [defaultPortion, setDefaultPortion] = React.useState(100);
   const [grams, setGrams] = React.useState(100);
   const [loadingBarcode, setLoadingBarcode] = React.useState(false);
   const [recentScans, setRecentScans] = React.useState<StoredProduct[]>([]);
@@ -100,7 +102,7 @@ export function AddMealView() {
       setBarcode(trimmed);
       const p = json.product as OffProduct;
       setProduct(p);
-      setGrams(100);
+      setGrams(defaultPortion);
       const item = { barcode: trimmed, name: p.product_name ?? `Produit ${trimmed}`, image_url: p.image_url ?? null };
       const nextRecent = [item, ...recentScans.filter((x) => x.barcode !== trimmed)].slice(0, 8);
       setRecentScans(nextRecent);
@@ -115,6 +117,9 @@ export function AddMealView() {
   }
 
   React.useEffect(() => {
+    const prefs = loadPreferences();
+    setDefaultPortion(prefs.default_portion_grams);
+    setGrams(prefs.default_portion_grams);
     setRecentScans(readStored(RECENT_KEY));
     setFavorites(readStored(FAVORITE_KEY));
   }, []);
