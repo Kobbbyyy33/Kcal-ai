@@ -7,16 +7,20 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { loadPreferences } from "@/lib/preferences";
 
-type Html5QrcodeModule = typeof import("html5-qrcode");
-
 type CameraDevice = {
   id: string;
   label: string;
 };
 
-type ScanEngine = "native" | "html5";
+type ScanEngine = "native" | "zxing";
 
-const BARCODE_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"];
+type ZxingBundle = {
+  BrowserMultiFormatReader: any;
+  DecodeHintType: any;
+  BarcodeFormat: any;
+};
+
+const BARCODE_DETECTOR_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"];
 
 export function BarcodeScanner({
   onDetected
@@ -31,24 +35,36 @@ export function BarcodeScanner({
   const [scannerAutoStart, setScannerAutoStart] = React.useState(false);
   const [vibrateOnDetect, setVibrateOnDetect] = React.useState(true);
   const [scanSoundEnabled, setScanSoundEnabled] = React.useState(false);
-  const [engine, setEngine] = React.useState<ScanEngine>("html5");
+  const [engine, setEngine] = React.useState<ScanEngine>("zxing");
 
   const containerId = React.useId().replaceAll(":", "");
-  const fileContainerId = `${containerId}-file`;
 
-  const scannerRef = React.useRef<any | null>(null);
-  const html5ModuleRef = React.useRef<Html5QrcodeModule | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
-  const detectorRef = React.useRef<any | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const nativeStreamRef = React.useRef<MediaStream | null>(null);
+  const detectorRef = React.useRef<any | null>(null);
   const rafRef = React.useRef<number | null>(null);
+  const zxingReaderRef = React.useRef<any | null>(null);
+  const zxingControlsRef = React.useRef<any | null>(null);
+  const zxingBundleRef = React.useRef<ZxingBundle | null>(null);
   const lastDetectedRef = React.useRef<string>("");
   const lastDetectedAtRef = React.useRef<number>(0);
 
   const getBackCamera = React.useCallback((list: CameraDevice[]) => {
     const back = list.find((cam) => /back|rear|arriere|environment/i.test(cam.label));
     return back ?? list[0] ?? null;
+  }, []);
+
+  const loadZxing = React.useCallback(async () => {
+    if (zxingBundleRef.current) return zxingBundleRef.current;
+    const browser = await import("@zxing/browser");
+    const core = await import("@zxing/library");
+    zxingBundleRef.current = {
+      BrowserMultiFormatReader: browser.BrowserMultiFormatReader,
+      DecodeHintType: core.DecodeHintType,
+      BarcodeFormat: core.BarcodeFormat
+    };
+    return zxingBundleRef.current;
   }, []);
 
   const notifyDetected = React.useCallback(
@@ -89,59 +105,41 @@ export function BarcodeScanner({
     detectorRef.current = null;
   }, []);
 
-  const stopHtml5 = React.useCallback(async () => {
-    const scanner = scannerRef.current;
-    if (!scanner) return;
-
+  const stopZxing = React.useCallback(async () => {
     try {
-      const state = scanner.getState?.();
-      if (state === 1 || state === 2) {
-        await scanner.stop();
-      }
+      zxingControlsRef.current?.stop?.();
     } catch {
       // ignore
     }
+    zxingControlsRef.current = null;
 
     try {
-      await scanner.clear();
+      zxingReaderRef.current?.reset?.();
     } catch {
       // ignore
     }
-
-    scannerRef.current = null;
+    zxingReaderRef.current = null;
   }, []);
 
   const stopScanner = React.useCallback(async () => {
-    await Promise.all([stopNative(), stopHtml5()]);
-  }, [stopHtml5, stopNative]);
-
-  const loadModule = React.useCallback(async () => {
-    if (html5ModuleRef.current) return html5ModuleRef.current;
-    const mod = await import("html5-qrcode");
-    html5ModuleRef.current = mod;
-    return mod;
-  }, []);
+    await Promise.all([stopNative(), stopZxing()]);
+  }, [stopNative, stopZxing]);
 
   const loadCameras = React.useCallback(async () => {
     try {
-      const mod = await loadModule();
-      const raw = await mod.Html5Qrcode.getCameras();
-      const normalized = (raw ?? [])
-        .filter((cam: any) => cam?.id)
-        .map((cam: any) => ({
-          id: String(cam.id),
-          label: String(cam.label ?? "Camera")
-        }));
-
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const normalized = devices
+        .filter((d) => d.kind === "videoinput")
+        .map((d, i) => ({ id: d.deviceId, label: d.label || `Camera ${i + 1}` }));
       setCameras(normalized);
       if (!selectedCameraId) {
         const back = getBackCamera(normalized);
         if (back) setSelectedCameraId(back.id);
       }
     } catch {
-      // iOS can hide labels until permission is granted.
+      // ignore
     }
-  }, [getBackCamera, loadModule, selectedCameraId]);
+  }, [getBackCamera, selectedCameraId]);
 
   const startNative = React.useCallback(async () => {
     const BarcodeDetectorClass = (window as any).BarcodeDetector;
@@ -165,15 +163,10 @@ export function BarcodeScanner({
     video.setAttribute("playsinline", "true");
     await video.play();
 
-    detectorRef.current = new BarcodeDetectorClass({ formats: BARCODE_FORMATS });
+    detectorRef.current = new BarcodeDetectorClass({ formats: BARCODE_DETECTOR_FORMATS });
 
     const tick = async () => {
       try {
-        if (!video.videoWidth || !video.videoHeight) {
-          rafRef.current = requestAnimationFrame(() => tick());
-          return;
-        }
-
         const barcodes = await detectorRef.current.detect(video);
         if (Array.isArray(barcodes) && barcodes.length > 0) {
           const raw = String(barcodes[0]?.rawValue ?? "").trim();
@@ -191,45 +184,40 @@ export function BarcodeScanner({
     rafRef.current = requestAnimationFrame(() => tick());
   }, [notifyDetected, selectedCameraId]);
 
-  const startHtml5 = React.useCallback(async () => {
-    const mod = await loadModule();
-    const scanner = new mod.Html5Qrcode(containerId);
-    scannerRef.current = scanner;
+  const startZxing = React.useCallback(async () => {
+    const z = await loadZxing();
 
-    const supportedFormats = [
-      mod.Html5QrcodeSupportedFormats.EAN_13,
-      mod.Html5QrcodeSupportedFormats.EAN_8,
-      mod.Html5QrcodeSupportedFormats.UPC_A,
-      mod.Html5QrcodeSupportedFormats.UPC_E,
-      mod.Html5QrcodeSupportedFormats.CODE_128,
-      mod.Html5QrcodeSupportedFormats.CODE_39,
-      mod.Html5QrcodeSupportedFormats.QR_CODE
-    ].filter(Boolean);
+    const hints = new Map();
+    hints.set(z.DecodeHintType.POSSIBLE_FORMATS, [
+      z.BarcodeFormat.EAN_13,
+      z.BarcodeFormat.EAN_8,
+      z.BarcodeFormat.UPC_A,
+      z.BarcodeFormat.UPC_E,
+      z.BarcodeFormat.CODE_128,
+      z.BarcodeFormat.CODE_39
+    ]);
+    hints.set(z.DecodeHintType.TRY_HARDER, true);
 
-    const config: any = {
-      fps: 12,
-      qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-        const side = Math.min(viewfinderWidth * 0.9, viewfinderHeight * 0.6);
-        return { width: Math.max(220, Math.floor(side)), height: Math.max(120, Math.floor(side * 0.55)) };
-      },
-      aspectRatio: 1.777,
-      disableFlip: true,
-      formatsToSupport: supportedFormats
-    };
+    const reader = new z.BrowserMultiFormatReader(hints, {
+      delayBetweenScanAttempts: 50,
+      delayBetweenScanSuccess: 1200
+    });
+    zxingReaderRef.current = reader;
 
-    await scanner.start(
-      selectedCameraId
-        ? { deviceId: { exact: selectedCameraId } }
-        : ({ facingMode: "environment" } as const),
-      config,
-      (decodedText: string) => {
-        notifyDetected(decodedText);
-      },
-      () => {
-        // ignore not-found frames
+    if (!videoRef.current) throw new Error("video element missing");
+
+    const controls = await reader.decodeFromVideoDevice(
+      selectedCameraId || undefined,
+      videoRef.current,
+      (result: any) => {
+        if (!result) return;
+        const raw = String(result.getText?.() ?? "").trim();
+        if (raw) notifyDetected(raw);
       }
     );
-  }, [containerId, loadModule, notifyDetected, selectedCameraId]);
+
+    zxingControlsRef.current = controls;
+  }, [loadZxing, notifyDetected, selectedCameraId]);
 
   const startScanner = React.useCallback(async () => {
     setBusy(true);
@@ -239,7 +227,6 @@ export function BarcodeScanner({
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("Camera non disponible sur cet appareil.");
       }
-
       if (!window.isSecureContext) {
         throw new Error("Camera live bloquee en HTTP. Passe en HTTPS ou utilise le scan photo.");
       }
@@ -258,8 +245,8 @@ export function BarcodeScanner({
         }
       }
 
-      await startHtml5();
-      setEngine("html5");
+      await startZxing();
+      setEngine("zxing");
       await loadCameras();
     } catch (e) {
       await stopScanner();
@@ -269,7 +256,7 @@ export function BarcodeScanner({
     } finally {
       setBusy(false);
     }
-  }, [loadCameras, startHtml5, startNative, stopNative, stopScanner]);
+  }, [loadCameras, startNative, startZxing, stopNative, stopScanner]);
 
   React.useEffect(() => {
     const prefs = loadPreferences();
@@ -292,11 +279,8 @@ export function BarcodeScanner({
 
     async function run() {
       if (unmounted) return;
-      if (active) {
-        await startScanner();
-      } else {
-        await stopScanner();
-      }
+      if (active) await startScanner();
+      else await stopScanner();
     }
 
     run().catch(() => undefined);
@@ -312,26 +296,28 @@ export function BarcodeScanner({
     setError(null);
 
     try {
-      const mod = await loadModule();
-      const scanner = new mod.Html5Qrcode(fileContainerId, {
-        formatsToSupport: [
-          mod.Html5QrcodeSupportedFormats.EAN_13,
-          mod.Html5QrcodeSupportedFormats.EAN_8,
-          mod.Html5QrcodeSupportedFormats.UPC_A,
-          mod.Html5QrcodeSupportedFormats.UPC_E,
-          mod.Html5QrcodeSupportedFormats.CODE_128,
-          mod.Html5QrcodeSupportedFormats.CODE_39,
-          mod.Html5QrcodeSupportedFormats.QR_CODE
-        ]
-      } as any);
+      const z = await loadZxing();
+      const hints = new Map();
+      hints.set(z.DecodeHintType.POSSIBLE_FORMATS, [
+        z.BarcodeFormat.EAN_13,
+        z.BarcodeFormat.EAN_8,
+        z.BarcodeFormat.UPC_A,
+        z.BarcodeFormat.UPC_E,
+        z.BarcodeFormat.CODE_128,
+        z.BarcodeFormat.CODE_39
+      ]);
+      hints.set(z.DecodeHintType.TRY_HARDER, true);
 
-      const decoded = await scanner.scanFile(file, true);
-      notifyDetected(decoded);
-
+      const reader = new z.BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 10 });
+      const imageUrl = URL.createObjectURL(file);
       try {
-        await scanner.clear();
-      } catch {
-        // ignore
+        const result = await reader.decodeFromImageUrl(imageUrl);
+        const raw = String(result?.getText?.() ?? "").trim();
+        if (!raw) throw new Error("Aucun code detecte");
+        notifyDetected(raw);
+      } finally {
+        URL.revokeObjectURL(imageUrl);
+        reader.reset();
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Aucun code-barres detecte sur la photo.";
@@ -347,9 +333,7 @@ export function BarcodeScanner({
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="text-sm font-semibold">Scanner</div>
-          <div className="text-sm text-gray-600 dark:text-slate-400">
-            Mode hybride: scanner natif mobile + fallback automatique.
-          </div>
+          <div className="text-sm text-gray-600 dark:text-slate-400">Mode hybride: scanner natif mobile + fallback ZXing.</div>
         </div>
         <Button
           type="button"
@@ -365,7 +349,7 @@ export function BarcodeScanner({
 
       <div className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
         <Zap className="h-3.5 w-3.5 text-[#7da03c]" />
-        Moteur actif: {engine === "native" ? "natif" : "html5"}
+        Moteur actif: {engine === "native" ? "natif" : "zxing"}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -407,18 +391,19 @@ export function BarcodeScanner({
       </div>
 
       <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
-        Astuce: eclairage fort, code bien plat, distance 12-18 cm.
+        Astuce: eclairage fort, code bien plat, distance 12-18 cm, et remplis bien l'ecran avec le code.
       </div>
 
       {error ? <div className="state-error mt-3 rounded-xl px-3 py-2 text-sm">{error}</div> : null}
 
       <video
         ref={videoRef}
-        className={["mt-4 w-full overflow-hidden rounded-2xl bg-black", active && engine === "native" ? "block" : "hidden"].join(" ")}
+        id={containerId}
+        className={["mt-4 w-full overflow-hidden rounded-2xl bg-black", active ? "block" : "hidden"].join(" ")}
         muted
+        autoPlay
+        playsInline
       />
-      <div id={containerId} className={["mt-4", active && engine === "html5" ? "block" : "hidden"].join(" ")} />
-      <div id={fileContainerId} className="hidden" />
     </Card>
   );
 }
