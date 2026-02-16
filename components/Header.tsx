@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/Button";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
-export function Header({ title }: { title: string }) {
+export function Header({ title: _title }: { title: string }) {
   const router = useRouter();
 
   return (
@@ -19,7 +19,6 @@ export function Header({ title }: { title: string }) {
             alt="KcalIA"
             className="h-9 w-auto object-contain"
           />
-          <div className="truncate text-xs text-slate-500 dark:text-slate-400">{title}</div>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />
