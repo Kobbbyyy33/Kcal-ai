@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg-page: #f1f5f9;
+  --text-main: #0f172a;
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg-page: #020617;
+  --text-main: #e2e8f0;
+}
+
+body {
+  @apply text-gray-900 dark:text-slate-50;
+  background: var(--bg-page);
+  color: var(--text-main);
+  font-family: var(--font-manrope), sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-sora), sans-serif;
+  letter-spacing: -0.02em;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
