@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Apple, Chrome } from "lucide-react";
+import { Chrome } from "lucide-react";
 import { toast } from "sonner";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { buildOAuthRedirectTo } from "@/lib/supabase/oauth";
 import { toUserErrorMessage } from "@/lib/supabase/errors";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -16,7 +17,6 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingGoogle, setLoadingGoogle] = useState(false);
-  const [loadingApple, setLoadingApple] = useState(false);
 
   return (
     <main className="min-h-dvh flex items-center justify-center px-4">
@@ -58,8 +58,10 @@ export default function SignupPage() {
               setLoadingGoogle(true);
               try {
                 const supabase = supabaseBrowser();
+                const redirectTo = buildOAuthRedirectTo("/dashboard");
                 const { error } = await supabase.auth.signInWithOAuth({
-                  provider: "google"
+                  provider: "google",
+                  options: { redirectTo }
                 });
                 if (error) throw error;
               } catch (err) {
@@ -71,29 +73,6 @@ export default function SignupPage() {
             <Chrome className="h-5 w-5" />
             Continuer avec Google
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="w-full border border-slate-200 dark:border-slate-700"
-            loading={loadingApple}
-            onClick={async () => {
-              setLoadingApple(true);
-              try {
-                const supabase = supabaseBrowser();
-                const { error } = await supabase.auth.signInWithOAuth({
-                  provider: "apple"
-                });
-                if (error) throw error;
-              } catch (err) {
-                toast.error(toUserErrorMessage(err, "Erreur Apple"));
-                setLoadingApple(false);
-              }
-            }}
-          >
-            <Apple className="h-5 w-5" />
-            Continuer avec Apple
-          </Button>
-
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
             ou

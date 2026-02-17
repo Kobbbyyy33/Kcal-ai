@@ -116,10 +116,15 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ## OAuth Apple (Supabase)
 
 1. Supabase Dashboard -> Authentication -> Providers -> Apple -> Enable.
-2. Configurer l'identifiant Service ID Apple et secret selon la doc Supabase.
-3. Ajouter la Redirect URL:
+2. Apple Developer:
+   - Creer une `Service ID` et activer `Sign in with Apple`.
+   - Ajouter la `Return URL` Supabase: `https://<PROJECT_REF>.supabase.co/auth/v1/callback`.
+   - Creer une `Key` (Sign in with Apple) et noter `Key ID`, `Team ID`, `Client ID` (Service ID) et la cle privee `.p8`.
+3. Reporter ces valeurs dans Supabase (Provider Apple).
+4. Supabase Dashboard -> Authentication -> URL Configuration -> ajouter en Redirect URLs:
    - `http://localhost:3000/auth/callback`
-   - URL prod equivalente.
+   - URL de prod equivalente, ex: `https://ton-domaine.com/auth/callback`
+5. Les boutons Login/Signup utilisent maintenant un `redirectTo` explicite vers `/auth/callback`.
 
 ## Push PWA (VAPID)
 
