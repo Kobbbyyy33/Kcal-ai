@@ -29,6 +29,7 @@ import { Modal } from "@/components/ui/Modal";
 import { NutritionSummary } from "@/components/NutritionSummary";
 import { SmartOnboardingCard } from "@/components/SmartOnboardingCard";
 import { flushOfflineMealQueue, getOfflineQueueSize } from "@/lib/offlineQueue";
+import { clampHydrationGoal, loadPreferences } from "@/lib/preferences";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { toUserErrorMessage } from "@/lib/supabase/errors";
 import { useStore } from "@/lib/store/useStore";
@@ -218,6 +219,7 @@ export function DashboardView() {
   const [copyingBusy, setCopyingBusy] = React.useState(false);
 
   const [hydration, setHydration] = React.useState(0);
+  const [hydrationGoal, setHydrationGoal] = React.useState(12);
   const [carryBusy, setCarryBusy] = React.useState(false);
   const [streakDays, setStreakDays] = React.useState(0);
   const [activeDays7, setActiveDays7] = React.useState(0);
@@ -695,20 +697,25 @@ export function DashboardView() {
   }, [selectedDate]);
 
   React.useEffect(() => {
+    const prefs = loadPreferences();
+    setHydrationGoal(clampHydrationGoal(prefs.hydration_goal_glasses));
+  }, []);
+
+  React.useEffect(() => {
     const raw = window.localStorage.getItem(hydrationKey(selectedDate));
     const parsed = raw ? Number(raw) : 0;
-    setHydration(Number.isFinite(parsed) ? Math.max(0, Math.min(12, parsed)) : 0);
-  }, [selectedDate]);
+    setHydration(Number.isFinite(parsed) ? Math.max(0, Math.min(hydrationGoal, parsed)) : 0);
+  }, [selectedDate, hydrationGoal]);
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("quick") !== "water") return;
     const key = `${QUICK_WATER_PREFIX}${selectedDate}`;
     if (window.localStorage.getItem(key) === "done") return;
-    setHydration((v) => Math.min(12, v + 1));
+    setHydration((v) => Math.min(hydrationGoal, v + 1));
     window.localStorage.setItem(key, "done");
     toast.success("Hydratation +1");
-  }, [selectedDate]);
+  }, [selectedDate, hydrationGoal]);
 
   React.useEffect(() => {
     window.localStorage.setItem(hydrationKey(selectedDate), String(hydration));
@@ -750,7 +757,7 @@ export function DashboardView() {
     if (!hydrationReminders) return;
     const id = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      if (hydration >= 8) return;
+      if (hydration >= Math.max(4, Math.ceil(hydrationGoal * 0.66))) return;
       const now = Date.now();
       const lastRaw = window.localStorage.getItem(LAST_REMINDER_KEY);
       const last = lastRaw ? Number(lastRaw) : 0;
@@ -765,7 +772,7 @@ export function DashboardView() {
       window.localStorage.setItem(LAST_REMINDER_KEY, String(now));
     }, 1000 * 60 * 10);
     return () => window.clearInterval(id);
-  }, [hydration, hydrationReminders, pushEnabled]);
+  }, [hydration, hydrationGoal, hydrationReminders, pushEnabled]);
 
   React.useEffect(() => {
     if (!hydrationReminders) return;
@@ -819,7 +826,7 @@ export function DashboardView() {
   const badges = [
     streakDays >= 5 ? "5 jours d'affilee" : null,
     profile && totals.protein >= profile.daily_protein_goal ? "Objectif proteines atteint" : null,
-    hydration >= 8 ? "Hydratation solide" : null,
+    hydration >= Math.max(4, Math.ceil(hydrationGoal * 0.66)) ? "Hydratation solide" : null,
     activeDays7 >= 6 ? "Semaine tres active" : null
   ].filter(Boolean) as string[];
 
@@ -847,7 +854,9 @@ export function DashboardView() {
               </div>
               <div className="rounded-2xl bg-slate-100 px-3 py-2 dark:bg-slate-800">
                 <div className="text-[11px] text-slate-500">Hydratation</div>
-                <div className="font-semibold">{hydration}/12</div>
+                <div className="font-semibold">
+                  {hydration}/{hydrationGoal}
+                </div>
               </div>
               <div className="rounded-2xl bg-slate-100 px-3 py-2 dark:bg-slate-800">
                 <div className="text-[11px] text-slate-500">Streak</div>
@@ -861,7 +870,7 @@ export function DashboardView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#dbeafe] p-4 dark:border-slate-700">
         <div className="flex items-center justify-between gap-2">
           <Button
             variant="ghost"
@@ -883,24 +892,27 @@ export function DashboardView() {
         </div>
       </Card>
 
-      <Card className="p-4">
-        <div className="mb-2 text-sm font-semibold">Quick Add</div>
-        <div className="flex items-center gap-2">
-          <Button className="px-4" onClick={() => setHydration((v) => Math.min(12, v + 1))}>
+      <Card className="border-[#dbeafe] p-4 dark:border-slate-700">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+          <Droplets className="h-4 w-4 text-sky-600" />
+          Quick actions
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Button className="w-full px-4" onClick={() => setHydration((v) => Math.min(hydrationGoal, v + 1))}>
             Eau +1
           </Button>
           <Link href="/add-meal?quick=manual">
-            <Button variant="ghost" className="px-4">
+            <Button variant="ghost" className="w-full border border-slate-300 px-4 dark:border-slate-600">
               Repas express
             </Button>
           </Link>
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#bfdbfe] p-4 dark:border-slate-700">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <Droplets className="h-4 w-4 text-emerald-600" />
+            <Droplets className="h-4 w-4 text-sky-600" />
             Hydratation
           </div>
           <div className="flex items-center gap-1">
@@ -925,26 +937,31 @@ export function DashboardView() {
             ) : null}
           </div>
         </div>
-        <div className="mb-3 grid grid-cols-12 gap-1.5">
-          {Array.from({ length: 12 }).map((_, idx) => (
+        <div
+          className="mb-3 grid gap-1.5"
+          style={{ gridTemplateColumns: `repeat(${hydrationGoal}, minmax(0, 1fr))` }}
+        >
+          {Array.from({ length: hydrationGoal }).map((_, idx) => (
             <div
               key={idx}
-              className={`h-7 rounded-lg ${idx < hydration ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"}`}
+              className={`h-7 rounded-lg ${idx < hydration ? "bg-sky-500" : "bg-slate-200 dark:bg-slate-700"}`}
             />
           ))}
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <Button variant="ghost" className="px-4" onClick={() => setHydration((v) => Math.max(0, v - 1))}>
             - 1 verre
           </Button>
-          <div className="text-sm font-semibold">{hydration} / 12</div>
-          <Button className="px-4" onClick={() => setHydration((v) => Math.min(12, v + 1))}>
+          <div className="text-sm font-semibold">
+            {hydration} / {hydrationGoal}
+          </div>
+          <Button className="px-4" onClick={() => setHydration((v) => Math.min(hydrationGoal, v + 1))}>
             + 1 verre
           </Button>
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#fee2e2] p-4 dark:border-slate-700">
         {profile ? (
           <NutritionSummary totals={totals} profile={profile} />
         ) : (
@@ -952,7 +969,7 @@ export function DashboardView() {
         )}
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#dcfce7] p-4 dark:border-slate-700">
         <div className="mb-3 flex items-center justify-between">
           <div className="text-sm font-semibold">Apercu 7 jours</div>
           <div className="text-xs text-gray-600 dark:text-slate-400">Moyenne: {avgWeekly} kcal</div>
@@ -983,7 +1000,7 @@ export function DashboardView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#e9d5ff] p-4 dark:border-slate-700">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-sm font-semibold">Classement hebdo</div>
           <div className="text-xs text-slate-500">
@@ -1006,7 +1023,7 @@ export function DashboardView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#fde68a] p-4 dark:border-slate-700">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-sm font-semibold">Coach hebdo intelligent</div>
           <Button variant="ghost" className="px-3 text-xs" loading={weeklyCoachLoading} onClick={loadWeeklyCoach}>
@@ -1040,7 +1057,7 @@ export function DashboardView() {
         )}
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#fecaca] p-4 dark:border-slate-700">
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <ClipboardList className="h-4 w-4 text-emerald-600" />
@@ -1074,7 +1091,7 @@ export function DashboardView() {
         )}
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#e2e8f0] p-4 dark:border-slate-700">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-sm font-semibold">Progression corporelle</div>
           <Button variant="ghost" className="px-3 text-xs" onClick={loadBodyProgress}>Rafraichir</Button>
@@ -1113,7 +1130,7 @@ export function DashboardView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#bae6fd] p-4 dark:border-slate-700">
         <div className="mb-2 text-sm font-semibold">Mode offline + sync</div>
         <div className="text-xs text-slate-500">Repas en attente: {offlineQueueCount}</div>
         <div className="mt-2">
@@ -1123,7 +1140,7 @@ export function DashboardView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#bbf7d0] p-4 dark:border-slate-700">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-semibold">
@@ -1138,7 +1155,7 @@ export function DashboardView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#ddd6fe] p-4 dark:border-slate-700">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Bot className="h-4 w-4 text-emerald-600" />

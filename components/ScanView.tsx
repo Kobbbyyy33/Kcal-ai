@@ -209,7 +209,7 @@ export function ScanView() {
 
   return (
     <div className="space-y-4">
-      <Card className="overflow-hidden p-0">
+      <Card className="overflow-hidden border-[#dbeafe] p-0 dark:border-slate-700">
         <div className="grid sm:grid-cols-[1.1fr_1fr]">
           <div className="p-5">
             <div className="text-lg font-semibold">Scan intelligent</div>
@@ -223,7 +223,7 @@ export function ScanView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#fed7aa] p-4 dark:border-slate-700">
         <div className="text-sm font-semibold">Scanner</div>
         <div className="mt-1 text-sm text-gray-600 dark:text-slate-400">Detecte automatiquement un code-barres ou saisis un code manuellement.</div>
         <div className="mt-3">
@@ -234,20 +234,20 @@ export function ScanView() {
             }}
           />
         </div>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
           <input
             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-base outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
             placeholder="Ex: 3017620422003"
           />
-          <Button loading={loadingProduct} onClick={() => fetchProduct(barcode)}>
+          <Button className="w-full sm:w-auto" loading={loadingProduct} onClick={() => fetchProduct(barcode)}>
             Chercher
           </Button>
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#e9d5ff] p-4 dark:border-slate-700">
         <div className="text-sm font-semibold">Comparateur produits A/B</div>
         <div className="mt-1 text-xs text-slate-500">Compare deux codes-barres et reco automatique.</div>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -264,12 +264,12 @@ export function ScanView() {
             onChange={(e) => setCompareB(e.target.value)}
           />
         </div>
-        <div className="mt-2 flex gap-2">
-          <Button loading={compareLoading} onClick={compareProducts}>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Button className="w-full" loading={compareLoading} onClick={compareProducts}>
             Comparer
           </Button>
           {barcode ? (
-            <Button variant="ghost" onClick={() => setCompareA(barcode)}>
+            <Button className="w-full border border-slate-300 dark:border-slate-600" variant="ghost" onClick={() => setCompareA(barcode)}>
               Utiliser code scanne en A
             </Button>
           ) : null}
@@ -298,7 +298,7 @@ export function ScanView() {
       </Card>
 
       {(favorites.length > 0 || recentScans.length > 0) && (
-        <Card className="p-4">
+        <Card className="border-[#fecdd3] p-4 dark:border-slate-700">
           {favorites.length > 0 && (
             <div>
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
@@ -347,7 +347,7 @@ export function ScanView() {
       )}
 
       {product ? (
-        <Card className="p-4">
+        <Card className="border-[#bbf7d0] p-4 dark:border-slate-700">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               <img
@@ -381,7 +381,7 @@ export function ScanView() {
             </button>
           </div>
 
-          <div className="mt-3 flex items-center gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-3">
             <input
               className="w-full"
               type="range"
@@ -400,7 +400,7 @@ export function ScanView() {
             />
             <span className="text-sm text-gray-600 dark:text-slate-400">g</span>
           </div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             {[50, 100, 150, 200].map((g) => (
               <button
                 key={g}

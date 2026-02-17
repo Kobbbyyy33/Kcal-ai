@@ -151,7 +151,7 @@ export function AddMealView() {
 
   return (
     <div className="space-y-4">
-      <Card className="overflow-hidden p-0">
+      <Card className="overflow-hidden border-[#dbeafe] p-0 dark:border-slate-700">
         <div className="grid sm:grid-cols-[1.1fr_1fr]">
           <div className="p-5">
             <div className="text-lg font-semibold">Compose ton repas</div>
@@ -163,7 +163,7 @@ export function AddMealView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#dcfce7] p-4 dark:border-slate-700">
         <div className="text-sm font-semibold">Methode</div>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {([
@@ -216,7 +216,7 @@ export function AddMealView() {
 
       {method === "barcode" ? (
         <>
-          <Card className="p-4">
+          <Card className="border-[#fed7aa] p-4 dark:border-slate-700">
             <div className="text-sm font-semibold">Scanner ou saisir un code</div>
             <div className="mt-3">
               <BarcodeScanner
@@ -226,14 +226,14 @@ export function AddMealView() {
                 }}
               />
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
               <input
                 className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-base outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
                 value={barcode}
                 onChange={(e) => setBarcode(e.target.value)}
                 placeholder="Ex: 3017620422003"
               />
-              <Button loading={loadingBarcode} onClick={() => loadByBarcode(barcode)}>
+              <Button className="w-full sm:w-auto" loading={loadingBarcode} onClick={() => loadByBarcode(barcode)}>
                 Chercher
               </Button>
             </div>
@@ -317,7 +317,7 @@ export function AddMealView() {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-3">
                   <input
                     className="w-full"
                     type="range"
@@ -337,7 +337,7 @@ export function AddMealView() {
                   <span className="text-sm text-gray-600 dark:text-slate-400">g</span>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {[50, 100, 150, 200].map((g) => (
                     <button
                       key={g}

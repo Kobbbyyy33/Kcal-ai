@@ -1,5 +1,6 @@
 export type AppPreferences = {
   default_portion_grams: number;
+  hydration_goal_glasses: number;
   scanner_auto_start: boolean;
   scanner_vibrate_on_detect: boolean;
   scan_sound_enabled: boolean;
@@ -9,6 +10,7 @@ const STORAGE_KEY = "kcal-ai:preferences:v1";
 
 export const defaultPreferences: AppPreferences = {
   default_portion_grams: 100,
+  hydration_goal_glasses: 12,
   scanner_auto_start: false,
   scanner_vibrate_on_detect: true,
   scan_sound_enabled: false
@@ -19,6 +21,11 @@ export function clampPortion(value: number) {
   return Math.min(600, Math.max(1, Math.round(value)));
 }
 
+export function clampHydrationGoal(value: number) {
+  if (!Number.isFinite(value)) return defaultPreferences.hydration_goal_glasses;
+  return Math.min(20, Math.max(4, Math.round(value)));
+}
+
 export function loadPreferences(): AppPreferences {
   if (typeof window === "undefined") return defaultPreferences;
   try {
@@ -27,6 +34,7 @@ export function loadPreferences(): AppPreferences {
     const parsed = JSON.parse(raw) as Partial<AppPreferences>;
     return {
       default_portion_grams: clampPortion(parsed.default_portion_grams ?? defaultPreferences.default_portion_grams),
+      hydration_goal_glasses: clampHydrationGoal(parsed.hydration_goal_glasses ?? defaultPreferences.hydration_goal_glasses),
       scanner_auto_start: Boolean(parsed.scanner_auto_start),
       scanner_vibrate_on_detect:
         parsed.scanner_vibrate_on_detect === undefined ? defaultPreferences.scanner_vibrate_on_detect : Boolean(parsed.scanner_vibrate_on_detect),
@@ -43,7 +51,8 @@ export function savePreferences(next: AppPreferences) {
     STORAGE_KEY,
     JSON.stringify({
       ...next,
-      default_portion_grams: clampPortion(next.default_portion_grams)
+      default_portion_grams: clampPortion(next.default_portion_grams),
+      hydration_goal_glasses: clampHydrationGoal(next.hydration_goal_glasses)
     })
   );
 }
@@ -53,4 +62,3 @@ export function clearFoodScanCache() {
   window.localStorage.removeItem("kcal-ai:recent-scans:v1");
   window.localStorage.removeItem("kcal-ai:favorite-scans:v1");
 }
-

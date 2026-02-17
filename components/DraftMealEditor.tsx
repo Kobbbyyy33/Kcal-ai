@@ -128,7 +128,7 @@ export function DraftMealEditor({
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
+      <Card className="border-[#bbf7d0] p-4 dark:border-slate-700">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(
             [
@@ -143,10 +143,10 @@ export function DraftMealEditor({
               type="button"
               onClick={() => setMealType(t)}
               className={[
-                "min-h-[44px] rounded-xl border px-3 py-2 text-sm font-medium transition-colors",
+                "tab-pill min-h-[44px] px-3 py-2 text-sm font-semibold",
                 t === mealType
-                  ? "border-primary bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
-                  : "border-gray-200 bg-white text-gray-800 hover:bg-gray-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                  ? "tab-pill-active"
+                  : "dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               ].join(" ")}
             >
               {label}
@@ -172,7 +172,7 @@ export function DraftMealEditor({
 
       <div className="space-y-3">
         {items.map((it, idx) => (
-          <Card key={`${it.name}-${idx}`} className="p-4">
+          <Card key={`${it.name}-${idx}`} className="border-[#dcfce7] p-4 dark:border-slate-700">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="block">
                 <span className="text-xs font-medium text-gray-600 dark:text-slate-400">Aliment</span>

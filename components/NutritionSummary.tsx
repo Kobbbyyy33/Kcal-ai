@@ -12,7 +12,7 @@ export function NutritionSummary({
   return (
     <div className="space-y-4">
       <div>
-        <div className="flex items-baseline justify-between">
+        <div className="flex flex-col items-center gap-1 text-center sm:flex-row sm:items-baseline sm:justify-between sm:text-left">
           <div className="text-sm font-medium">Calories</div>
           <div className="text-sm text-gray-600 dark:text-slate-400">
             {Math.round(totals.calories)} / {profile.daily_calorie_goal} kcal
@@ -27,7 +27,7 @@ export function NutritionSummary({
           value={totals.protein}
           goal={profile.daily_protein_goal}
           icon="/icons/protein.svg"
-          color="#10b981"
+          color="#ef4444"
         />
         <MacroCircle
           label="Glucides"
@@ -41,7 +41,7 @@ export function NutritionSummary({
           value={totals.fat}
           goal={profile.daily_fat_goal}
           icon="/icons/fat.svg"
-          color="#3b82f6"
+          color="#8b5e34"
         />
       </div>
     </div>

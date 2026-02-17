@@ -31,14 +31,13 @@ export function PhotoUploader({
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("Non connecté");
+    if (!user) throw new Error("Non connecte");
 
     const path = `${user.id}/${Date.now()}-${file.name.replaceAll(" ", "_")}`;
     const { error } = await supabase.storage.from("meal-images").upload(path, file, {
       upsert: false,
       contentType: file.type
     });
-
     if (error) throw error;
 
     const { data } = supabase.storage.from("meal-images").getPublicUrl(path);
@@ -50,7 +49,6 @@ export function PhotoUploader({
     setBusy(true);
     try {
       const [{ mediaType, base64 }, imageUrl] = await Promise.all([fileToBase64(file), uploadToSupabase(file).catch(() => null)]);
-
       const res = await fetch("/api/analyze-meal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -71,22 +69,22 @@ export function PhotoUploader({
         },
         imageUrl
       );
-      toast.success("Analyse terminée");
+      toast.success("Analyse terminee");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Card className="p-4">
-      <div className="text-sm font-semibold">Analyse d’une photo</div>
+    <Card className="border-[#bfdbfe] p-4 dark:border-slate-700">
+      <div className="text-sm font-semibold">Analyse d'une photo</div>
       <p className="mt-1 text-sm text-gray-600 dark:text-slate-400">
-        Prends une photo ou upload une image (max 5MB). L’analyse est faite via OpenAI Vision côté serveur.
+        Prends une photo ou upload une image (max 5MB). L'analyse est faite via OpenAI Vision cote serveur.
       </p>
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-        <label className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-primary px-6 py-3 text-base font-medium text-white transition-colors hover:bg-emerald-600 min-h-[44px]">
-          {busy ? "Analyse…" : "Choisir une photo"}
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[auto_auto]">
+        <label className="inline-flex min-h-[44px] cursor-pointer items-center justify-center rounded-xl bg-primary px-6 py-3 text-base font-medium text-white transition-colors hover:bg-emerald-600">
+          {busy ? "Analyse..." : "Choisir une photo"}
           <input
             className="hidden"
             type="file"
@@ -105,8 +103,9 @@ export function PhotoUploader({
         <Button
           type="button"
           variant="ghost"
+          className="w-full border border-slate-300 dark:border-slate-600 sm:w-auto"
           disabled={busy}
-          onClick={() => toast.message("Astuce", { description: "Sur mobile, utilise l’option caméra pour une meilleure détection." })}
+          onClick={() => toast.message("Astuce", { description: "Sur mobile, utilise l'option camera pour une meilleure detection." })}
         >
           Conseils
         </Button>

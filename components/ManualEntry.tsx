@@ -83,9 +83,9 @@ export function ManualEntry({ onDraft }: { onDraft: (draft: DraftMeal) => void }
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
+      <Card className="border-[#e0e7ff] p-4 dark:border-slate-700">
         <div className="text-sm font-semibold">Recherche Open Food Facts</div>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
           <input
             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-base outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
             placeholder="Ex: yaourt grec, jambon, muesli..."
@@ -98,7 +98,7 @@ export function ManualEntry({ onDraft }: { onDraft: (draft: DraftMeal) => void }
               }
             }}
           />
-          <Button loading={loading} onClick={search}>
+          <Button className="w-full sm:w-auto" loading={loading} onClick={search}>
             Chercher
           </Button>
         </div>
@@ -182,7 +182,7 @@ export function ManualEntry({ onDraft }: { onDraft: (draft: DraftMeal) => void }
         ) : null}
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#fef3c7] p-4 dark:border-slate-700">
         <div className="text-sm font-semibold">Saisie manuelle</div>
         <div className="mt-1 text-sm text-gray-600 dark:text-slate-400">Utilise cette option si le produit est introuvable ou incomplet.</div>
 

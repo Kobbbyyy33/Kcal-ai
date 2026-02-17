@@ -1,12 +1,19 @@
 ﻿"use client";
 
 import * as React from "react";
-import { Bell, Camera, Download, Eraser, ShieldCheck, Smartphone, WandSparkles } from "lucide-react";
+import { Bell, Camera, Download, Droplets, Eraser, ShieldCheck, Smartphone, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { clearFoodScanCache, clampPortion, loadPreferences, savePreferences, type AppPreferences } from "@/lib/preferences";
+import {
+  clearFoodScanCache,
+  clampHydrationGoal,
+  clampPortion,
+  loadPreferences,
+  savePreferences,
+  type AppPreferences
+} from "@/lib/preferences";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { toUserErrorMessage } from "@/lib/supabase/errors";
 import type { Profile } from "@/types";
@@ -53,7 +60,7 @@ function SettingSwitch({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
-      <div>
+      <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
         <div className="text-xs text-slate-500 dark:text-slate-400">{description}</div>
       </div>
@@ -62,7 +69,7 @@ function SettingSwitch({
         aria-pressed={checked}
         onClick={() => onChange(!checked)}
         className={[
-          "relative h-7 w-12 rounded-full border transition-colors",
+          "relative h-7 w-12 shrink-0 rounded-full border transition-colors",
           checked
             ? "border-[#7da03c] bg-[#7da03c]"
             : "border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700"
@@ -173,7 +180,7 @@ export function SettingsView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#dce8cb] p-4 dark:border-slate-700">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <WandSparkles className="h-4 w-4 text-[#7da03c]" />
           Objectifs journaliers
@@ -317,7 +324,7 @@ export function SettingsView() {
         </div>
       </Card>
 
-      <Card className="p-4">
+      <Card className="border-[#f4d7bf] p-4 dark:border-slate-700">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <Camera className="h-4 w-4 text-[#e55f15]" />
           Scanner et saisie rapide
@@ -340,6 +347,35 @@ export function SettingsView() {
               }
             />
           </label>
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600 dark:text-slate-400">Objectif eau (verres/jour)</span>
+            <input
+              className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-900"
+              type="number"
+              min={4}
+              max={20}
+              value={prefs.hydration_goal_glasses}
+              onChange={(e) =>
+                setPrefs((prev) => ({
+                  ...prev,
+                  hydration_goal_glasses: clampHydrationGoal(Number(e.target.value) || 12)
+                }))
+              }
+            />
+          </label>
+        </div>
+
+        <div className="mt-2 rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-2 dark:border-sky-900/60 dark:bg-sky-950/30">
+          <div className="flex items-center gap-2 text-xs font-semibold text-sky-700 dark:text-sky-300">
+            <Droplets className="h-4 w-4" />
+            Hydratation
+          </div>
+          <div className="mt-1 text-xs text-sky-700/80 dark:text-sky-300/80">
+            Cet objectif est utilise dans le Dashboard pour la progression d'eau et les rappels.
+          </div>
+        </div>
+
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <div className="rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
               <Smartphone className="h-4 w-4" />
@@ -390,7 +426,7 @@ export function SettingsView() {
           </Button>
           <Button
             variant="ghost"
-            className="w-full"
+            className="w-full border border-slate-300 dark:border-slate-600"
             onClick={() => {
               clearFoodScanCache();
               toast.success("Cache local nettoye");
