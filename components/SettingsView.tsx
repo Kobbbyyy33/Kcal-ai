@@ -47,6 +47,11 @@ function computePreset(baseCalories: number, preset: GoalPreset): GoalForm {
   };
 }
 
+function isMissingGoalModeColumn(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return message.includes("profiles.goal_mode") && message.includes("does not exist");
+}
+
 function SettingSwitch({
   checked,
   onChange,
@@ -290,27 +295,36 @@ export function SettingsView() {
                 } = await supabase.auth.getUser();
                 if (!user) throw new Error("Non connecte");
 
-                const { error } = await supabase
+                const basePayload = {
+                  daily_calorie_goal: goals.daily_calorie_goal,
+                  daily_protein_goal: goals.daily_protein_goal,
+                  daily_carbs_goal: goals.daily_carbs_goal,
+                  daily_fat_goal: goals.daily_fat_goal,
+                  budget_per_day: budgetPerDay,
+                  dietary_preferences: dietaryPrefs
+                    .split(",")
+                    .map((x) => x.trim())
+                    .filter(Boolean),
+                  allergens: allergens
+                    .split(",")
+                    .map((x) => x.trim())
+                    .filter(Boolean)
+                };
+
+                const firstTry = await supabase
                   .from("profiles")
                   .update({
-                    daily_calorie_goal: goals.daily_calorie_goal,
-                    daily_protein_goal: goals.daily_protein_goal,
-                    daily_carbs_goal: goals.daily_carbs_goal,
-                    daily_fat_goal: goals.daily_fat_goal,
+                    ...basePayload,
                     goal_mode: goalMode,
-                    budget_per_day: budgetPerDay,
-                    dietary_preferences: dietaryPrefs
-                      .split(",")
-                      .map((x) => x.trim())
-                      .filter(Boolean),
-                    allergens: allergens
-                      .split(",")
-                      .map((x) => x.trim())
-                      .filter(Boolean)
                   })
                   .eq("id", user.id);
 
-                if (error) throw error;
+                if (firstTry.error && isMissingGoalModeColumn(firstTry.error)) {
+                  const fallback = await supabase.from("profiles").update(basePayload).eq("id", user.id);
+                  if (fallback.error) throw fallback.error;
+                } else if (firstTry.error) {
+                  throw firstTry.error;
+                }
                 toast.success("Objectifs enregistres");
               } catch (err) {
                 toast.error(toUserErrorMessage(err, "Erreur de sauvegarde"));

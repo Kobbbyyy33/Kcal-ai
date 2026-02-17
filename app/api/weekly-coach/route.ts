@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   const [{ data: profile, error: profileErr }, { data: mealRows, error: mealsErr }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("daily_calorie_goal,daily_protein_goal,daily_carbs_goal,daily_fat_goal,goal_mode")
+      .select("daily_calorie_goal,daily_protein_goal,daily_carbs_goal,daily_fat_goal")
       .eq("id", user.id)
       .single(),
     supabase
@@ -120,4 +120,3 @@ export async function POST(request: Request) {
     rare_badges: rareBadges
   });
 }
-
