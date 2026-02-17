@@ -3,7 +3,7 @@
 import { Copy, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { MealWithItems } from "@/types";
+import type { FoodItem, MealWithItems } from "@/types";
 
 function sum(meal: MealWithItems) {
   return meal.food_items.reduce(
@@ -45,12 +45,14 @@ export function MealCard({
   meal,
   onEdit,
   onDelete,
-  onCopy
+  onCopy,
+  onFoodClick
 }: {
   meal: MealWithItems;
   onEdit: () => void;
   onDelete: () => void;
   onCopy: () => void;
+  onFoodClick?: (food: FoodItem) => void;
 }) {
   const totals = sum(meal);
   const quality = mealQuality(meal);
@@ -95,13 +97,18 @@ export function MealCard({
           {quality.feedback.join(" ")}
         </div>
         {meal.food_items.map((it) => (
-          <div key={it.id} className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/70">
+          <button
+            key={it.id}
+            type="button"
+            onClick={() => onFoodClick?.(it)}
+            className="flex w-full items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100 dark:bg-slate-800/70 dark:hover:bg-slate-800"
+          >
             <div className="min-w-0">
               <div className="truncate font-medium">{it.name}</div>
               <div className="text-gray-600 dark:text-slate-400">{it.quantity ?? "Portion"}</div>
             </div>
             <div className="shrink-0 text-gray-700 dark:text-slate-200">{Math.round(Number(it.calories) || 0)} kcal</div>
-          </div>
+          </button>
         ))}
       </div>
     </Card>

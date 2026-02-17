@@ -29,11 +29,11 @@ import { Modal } from "@/components/ui/Modal";
 import { NutritionSummary } from "@/components/NutritionSummary";
 import { SmartOnboardingCard } from "@/components/SmartOnboardingCard";
 import { flushOfflineMealQueue, getOfflineQueueSize } from "@/lib/offlineQueue";
-import { clampHydrationGoal, loadPreferences } from "@/lib/preferences";
+import { clampHydrationGoal, loadPreferences, type AppPreferences } from "@/lib/preferences";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { toUserErrorMessage } from "@/lib/supabase/errors";
 import { useStore } from "@/lib/store/useStore";
-import type { CoachInsight, MacroTotals, MealSuggestion, MealType, MealWithItems, Profile, WeeklyPlanResult } from "@/types";
+import type { CoachInsight, FoodItem, MacroTotals, MealSuggestion, MealType, MealWithItems, Profile, WeeklyPlanResult } from "@/types";
 
 type WeeklyDay = {
   date: string;
@@ -195,6 +195,41 @@ function dayConsistencyScore(
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
+function foodQualityScore(it: FoodItem, mode: AppPreferences["product_score_mode"]) {
+  const kcal = Number(it.calories) || 0;
+  const p = Number(it.protein) || 0;
+  const c = Number(it.carbs) || 0;
+  const f = Number(it.fat) || 0;
+
+  const strictness = mode === "strict" ? 1.25 : mode === "tolerant" ? 0.75 : 1;
+
+  let score = 62;
+  if (p >= 20) score += Math.round(18 * strictness);
+  else if (p >= 12) score += Math.round(10 * strictness);
+  else score -= 10;
+
+  if (kcal > 700) score -= Math.round(12 * strictness);
+  else if (kcal > 450) score -= Math.round(6 * strictness);
+
+  if (f > 35) score -= Math.round(10 * strictness);
+  else if (f > 20) score -= Math.round(4 * strictness);
+
+  if (c > 75 && p < 10) score -= Math.round(8 * strictness);
+  if (it.source === "barcode") score += 3;
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  const grade = score >= 85 ? "A" : score >= 70 ? "B" : score >= 55 ? "C" : score >= 40 ? "D" : "E";
+  const summary =
+    grade === "A" || grade === "B"
+      ? "Profil nutrition tres correct."
+      : grade === "C"
+        ? "Correct mais perfectible."
+        : "Produit a limiter selon tes objectifs.";
+
+  return { score, grade, summary };
+}
+
 const MEAL_TYPES: Array<{ type: MealType; label: string }> = [
   { type: "breakfast", label: "Petit dej" },
   { type: "lunch", label: "Dejeuner" },
@@ -217,9 +252,11 @@ export function DashboardView() {
   const [copying, setCopying] = React.useState<MealWithItems | null>(null);
   const [copyDate, setCopyDate] = React.useState(selectedDate);
   const [copyingBusy, setCopyingBusy] = React.useState(false);
+  const [selectedFood, setSelectedFood] = React.useState<FoodItem | null>(null);
 
   const [hydration, setHydration] = React.useState(0);
   const [hydrationGoal, setHydrationGoal] = React.useState(12);
+  const [productScoreMode, setProductScoreMode] = React.useState<AppPreferences["product_score_mode"]>("balanced");
   const [carryBusy, setCarryBusy] = React.useState(false);
   const [streakDays, setStreakDays] = React.useState(0);
   const [activeDays7, setActiveDays7] = React.useState(0);
@@ -245,6 +282,18 @@ export function DashboardView() {
   const [pushSupported, setPushSupported] = React.useState(false);
   const [pushEnabled, setPushEnabled] = React.useState(false);
   const [pushBusy, setPushBusy] = React.useState(false);
+
+  const setHydrationValue = React.useCallback(
+    (updater: number | ((prev: number) => number)) => {
+      setHydration((prev) => {
+        const rawNext = typeof updater === "function" ? updater(prev) : updater;
+        const next = Math.max(0, Math.min(hydrationGoal, Math.round(rawNext)));
+        window.localStorage.setItem(hydrationKey(selectedDate), String(next));
+        return next;
+      });
+    },
+    [hydrationGoal, selectedDate]
+  );
 
   async function refresh(date = selectedDate) {
     setLoading(true);
@@ -699,6 +748,7 @@ export function DashboardView() {
   React.useEffect(() => {
     const prefs = loadPreferences();
     setHydrationGoal(clampHydrationGoal(prefs.hydration_goal_glasses));
+    setProductScoreMode(prefs.product_score_mode);
   }, []);
 
   React.useEffect(() => {
@@ -712,14 +762,10 @@ export function DashboardView() {
     if (params.get("quick") !== "water") return;
     const key = `${QUICK_WATER_PREFIX}${selectedDate}`;
     if (window.localStorage.getItem(key) === "done") return;
-    setHydration((v) => Math.min(hydrationGoal, v + 1));
+    setHydrationValue((v) => v + 1);
     window.localStorage.setItem(key, "done");
     toast.success("Hydratation +1");
-  }, [selectedDate, hydrationGoal]);
-
-  React.useEffect(() => {
-    window.localStorage.setItem(hydrationKey(selectedDate), String(hydration));
-  }, [selectedDate, hydration]);
+  }, [selectedDate, setHydrationValue]);
 
   React.useEffect(() => {
     const raw = window.localStorage.getItem(HYDRATION_REMINDER_KEY);
@@ -898,7 +944,7 @@ export function DashboardView() {
           Quick actions
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Button className="w-full px-4" onClick={() => setHydration((v) => Math.min(hydrationGoal, v + 1))}>
+          <Button className="w-full px-4" onClick={() => setHydrationValue((v) => v + 1)}>
             Eau +1
           </Button>
           <Link href="/add-meal?quick=manual">
@@ -949,13 +995,13 @@ export function DashboardView() {
           ))}
         </div>
         <div className="flex items-center justify-between gap-2">
-          <Button variant="ghost" className="px-4" onClick={() => setHydration((v) => Math.max(0, v - 1))}>
+          <Button variant="ghost" className="px-4" onClick={() => setHydrationValue((v) => v - 1)}>
             - 1 verre
           </Button>
           <div className="text-sm font-semibold">
             {hydration} / {hydrationGoal}
           </div>
-          <Button className="px-4" onClick={() => setHydration((v) => Math.min(hydrationGoal, v + 1))}>
+          <Button className="px-4" onClick={() => setHydrationValue((v) => v + 1)}>
             + 1 verre
           </Button>
         </div>
@@ -1244,6 +1290,7 @@ export function DashboardView() {
                       <MealCard
                         key={meal.id}
                         meal={meal}
+                        onFoodClick={(food) => setSelectedFood(food)}
                         onEdit={() => setEditing(meal)}
                         onCopy={() => {
                           setCopyDate(selectedDate);
@@ -1353,6 +1400,55 @@ export function DashboardView() {
               >
                 Copier
               </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!selectedFood} title={selectedFood?.name ?? "Detail produit"} onClose={() => setSelectedFood(null)}>
+        {!selectedFood ? null : (
+          <div className="space-y-3">
+            <div className="flex items-start gap-3">
+              <img
+                src={selectedFood.image_url ?? "/icons/scan-food.svg"}
+                alt={selectedFood.name}
+                className="h-16 w-16 rounded-2xl object-cover"
+              />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">{selectedFood.name}</div>
+                <div className="mt-1 text-xs text-slate-500">{selectedFood.quantity ?? "Portion"} • {Math.round(Number(selectedFood.calories) || 0)} kcal</div>
+                {selectedFood.barcode ? <div className="mt-1 text-xs text-slate-500">Code-barres: {selectedFood.barcode}</div> : null}
+                <div className="mt-1 text-xs text-slate-500">Source: {selectedFood.source === "barcode" ? "Scan code-barres" : selectedFood.source === "ai" ? "Photo IA" : "Saisie manuelle"}</div>
+              </div>
+            </div>
+
+            {(() => {
+              const q = foodQualityScore(selectedFood, productScoreMode);
+              return (
+                <div className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                  <div className="font-semibold">Analyse style Yuka: {q.grade} ({q.score}/100)</div>
+                  <div className="mt-1">{q.summary}</div>
+                </div>
+              );
+            })()}
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="text-slate-500">Proteines</div>
+                <div className="font-semibold">{Math.round(Number(selectedFood.protein) || 0)} g</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="text-slate-500">Glucides</div>
+                <div className="font-semibold">{Math.round(Number(selectedFood.carbs) || 0)} g</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="text-slate-500">Lipides</div>
+                <div className="font-semibold">{Math.round(Number(selectedFood.fat) || 0)} g</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="text-slate-500">Calories</div>
+                <div className="font-semibold">{Math.round(Number(selectedFood.calories) || 0)} kcal</div>
+              </div>
             </div>
           </div>
         )}

@@ -9,6 +9,7 @@ import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { ManualEntry } from "@/components/ManualEntry";
 import { DraftMealEditor, type DraftMeal } from "@/components/DraftMealEditor";
 import { loadPreferences } from "@/lib/preferences";
+import { pushScanHistory } from "@/lib/scanHistory";
 import type { MealType } from "@/types";
 
 type OffProduct = {
@@ -141,10 +142,24 @@ export function ScanView() {
       const p = json.product as OffProduct;
       setProduct(p);
       setGrams(defaultPortion);
+      const per = macrosPer100g(p);
       rememberScan({
         barcode: trimmed,
         name: p.product_name ?? `Produit ${trimmed}`,
         image_url: p.image_url ?? null
+      });
+      pushScanHistory({
+        barcode: trimmed,
+        name: p.product_name ?? `Produit ${trimmed}`,
+        image_url: p.image_url ?? null,
+        brands: p.brands ?? null,
+        nutriscore_grade: p.nutriscore_grade ? String(p.nutriscore_grade).toUpperCase() : null,
+        kcal_100g: per.kcal,
+        protein_100g: per.protein,
+        carbs_100g: per.carbs,
+        fat_100g: per.fat,
+        source: "scan",
+        scanned_at: new Date().toISOString()
       });
     } catch (err) {
       setBarcode(trimmed);

@@ -1,10 +1,11 @@
 ﻿"use client";
 
 import * as React from "react";
-import { Bell, Camera, Download, Droplets, Eraser, ShieldCheck, Smartphone, WandSparkles } from "lucide-react";
+import { Bell, Camera, Download, Droplets, Eraser, History, ShieldCheck, Smartphone, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   clearFoodScanCache,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/preferences";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { toUserErrorMessage } from "@/lib/supabase/errors";
+import { readScanHistory, type ScannedFoodHistoryEntry } from "@/lib/scanHistory";
 import type { Profile } from "@/types";
 
 type GoalForm = {
@@ -111,6 +113,8 @@ export function SettingsView() {
   const [allergens, setAllergens] = React.useState<string>("");
 
   const [prefs, setPrefs] = React.useState<AppPreferences>(() => loadPreferences());
+  const [scanHistory, setScanHistory] = React.useState<ScannedFoodHistoryEntry[]>([]);
+  const [selectedScan, setSelectedScan] = React.useState<ScannedFoodHistoryEntry | null>(null);
 
   async function load() {
     setLoading(true);
@@ -140,6 +144,7 @@ export function SettingsView() {
       }
 
       setPrefs(loadPreferences());
+      setScanHistory(readScanHistory());
     } catch (err) {
       toast.error(toUserErrorMessage(err, "Erreur de chargement"));
     } finally {
@@ -150,6 +155,10 @@ export function SettingsView() {
   React.useEffect(() => {
     load();
   }, []);
+
+  React.useEffect(() => {
+    savePreferences(prefs);
+  }, [prefs]);
 
   async function exportMyData() {
     setExporting(true);
@@ -403,6 +412,34 @@ export function SettingsView() {
         </div>
 
         <div className="mt-3 space-y-2">
+          <div className="rounded-2xl border border-slate-200/80 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+            <div className="text-sm font-medium">Severite du score produit</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              Ajuste l'analyse "style Yuka" dans la popup produit sur le Dashboard.
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {(
+                [
+                  ["tolerant", "Tolerant"],
+                  ["balanced", "Equilibre"],
+                  ["strict", "Strict"]
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={[
+                    "tab-pill min-h-[40px] px-3 py-2 text-xs font-semibold",
+                    prefs.product_score_mode === mode ? "tab-pill-active" : "dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  ].join(" ")}
+                  onClick={() => setPrefs((prev) => ({ ...prev, product_score_mode: mode }))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <SettingSwitch
             checked={prefs.scanner_auto_start}
             onChange={(next) => setPrefs((prev) => ({ ...prev, scanner_auto_start: next }))}
@@ -444,6 +481,7 @@ export function SettingsView() {
             className="w-full border border-slate-300 dark:border-slate-600"
             onClick={() => {
               clearFoodScanCache();
+              setScanHistory([]);
               toast.success("Cache local nettoye");
             }}
           >
@@ -451,6 +489,46 @@ export function SettingsView() {
             Vider favoris/scans
           </Button>
         </div>
+      </Card>
+
+      <Card className="border-[#dbeafe] p-4 dark:border-slate-700">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <History className="h-4 w-4 text-sky-600" />
+            Historique scans
+          </div>
+          <div className="text-xs text-slate-500">{scanHistory.length} produit(s)</div>
+        </div>
+
+        {scanHistory.length === 0 ? (
+          <div className="mt-2 text-xs text-slate-500">Aucun produit scanne pour le moment.</div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {scanHistory.slice(0, 20).map((it) => (
+              <button
+                key={`${it.barcode}-${it.scanned_at}`}
+                type="button"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+                onClick={() => setSelectedScan(it)}
+              >
+                <div className="flex items-center gap-3">
+                  <img
+                    src={it.image_url ?? "/icons/scan-food.svg"}
+                    alt={it.name}
+                    className="h-10 w-10 rounded-xl object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">{it.name}</div>
+                    <div className="text-xs text-slate-500">
+                      {it.barcode} • {it.kcal_100g ? `${Math.round(it.kcal_100g)} kcal/100g` : "kcal inconnues"}
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-slate-500">{new Date(it.scanned_at).toLocaleDateString("fr-FR")}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </Card>
 
       <Card className="p-4">
@@ -478,6 +556,51 @@ export function SettingsView() {
           Les notifications push se configurent depuis le Dashboard (activation/desactivation).
         </div>
       </Card>
+
+      <Modal open={!!selectedScan} title={selectedScan?.name ?? "Produit"} onClose={() => setSelectedScan(null)}>
+        {!selectedScan ? null : (
+          <div className="space-y-3">
+            <div className="flex items-start gap-3">
+              <img
+                src={selectedScan.image_url ?? "/icons/scan-food.svg"}
+                alt={selectedScan.name}
+                className="h-16 w-16 rounded-2xl object-cover"
+              />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">{selectedScan.name}</div>
+                <div className="mt-1 text-xs text-slate-500">{selectedScan.brands ?? "Marque inconnue"}</div>
+                <div className="mt-1 text-xs text-slate-500">Code-barres: {selectedScan.barcode}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Scanne le {new Date(selectedScan.scanned_at).toLocaleString("fr-FR")}
+                </div>
+                {selectedScan.nutriscore_grade ? (
+                  <div className="mt-1 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    Nutri-score {selectedScan.nutriscore_grade}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="text-slate-500">Calories</div>
+                <div className="font-semibold">{Math.round(selectedScan.kcal_100g)} kcal</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="text-slate-500">Proteines</div>
+                <div className="font-semibold">{Math.round(selectedScan.protein_100g)} g</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="text-slate-500">Glucides</div>
+                <div className="font-semibold">{Math.round(selectedScan.carbs_100g)} g</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+                <div className="text-slate-500">Lipides</div>
+                <div className="font-semibold">{Math.round(selectedScan.fat_100g)} g</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
